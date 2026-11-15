@@ -135,6 +135,7 @@ fun FileBrowserScreen(
     onSearchQueryChange: (String) -> Unit,
     onToggleDeepSearch: () -> Unit,
     onSelectAll: () -> Unit,
+    onInvertSelection: () -> Unit,
     onClearSelection: () -> Unit,
     onCopySelected: (List<FileItem>) -> Unit,
     onCutSelected: (List<FileItem>) -> Unit,
@@ -212,6 +213,12 @@ fun FileBrowserScreen(
                                 color = onyx.accent,
                                 modifier = Modifier.weight(1f)
                             )
+                            androidx.compose.material3.TextButton(
+                                onClick = onInvertSelection,
+                                modifier = Modifier.testTag("invert_selection_button")
+                            ) {
+                                Text("Invert", color = onyx.accent)
+                            }
                             IconButton(onClick = onSelectAll) {
                                 Icon(Icons.Rounded.SelectAll, contentDescription = "Select all", tint = onyx.textPrimary)
                             }
@@ -442,19 +449,17 @@ fun FileBrowserScreen(
                             fadeIn(tween(150)) togetherWith fadeOut(tween(120))
                         } else if (forward) {
                             (slideInHorizontally(tween(240, easing = FastOutSlowInEasing)) { it / 4 } +
-                                fadeIn(tween(210)) +
-                                scaleIn(initialScale = 0.96f, animationSpec = tween(240, easing = FastOutSlowInEasing)))
+                                fadeIn(tween(200, easing = FastOutSlowInEasing)))
                                 .togetherWith(
-                                    slideOutHorizontally(tween(200, easing = FastOutSlowInEasing)) { -it / 5 } +
-                                        fadeOut(tween(160))
+                                    slideOutHorizontally(tween(210, easing = FastOutSlowInEasing)) { -it / 6 } +
+                                        fadeOut(tween(150))
                                 )
                         } else {
                             (slideInHorizontally(tween(240, easing = FastOutSlowInEasing)) { -it / 4 } +
-                                fadeIn(tween(210)) +
-                                scaleIn(initialScale = 0.96f, animationSpec = tween(240, easing = FastOutSlowInEasing)))
+                                fadeIn(tween(200, easing = FastOutSlowInEasing)))
                                 .togetherWith(
-                                    slideOutHorizontally(tween(200, easing = FastOutSlowInEasing)) { it / 5 } +
-                                        fadeOut(tween(160))
+                                    slideOutHorizontally(tween(210, easing = FastOutSlowInEasing)) { it / 6 } +
+                                        fadeOut(tween(150))
                                 )
                         }
                     },

@@ -325,7 +325,8 @@ class FileOperationsRepository(private val context: Context) {
                 CategorySummary(FileCategory.DOCUMENTS, fileStats.docCount, fileStats.docBytes),
                 CategorySummary(FileCategory.DOWNLOADS, dlCount, dlBytes),
                 CategorySummary(FileCategory.APKS, fileStats.apkCount, fileStats.apkBytes),
-                CategorySummary(FileCategory.ARCHIVES, fileStats.archiveCount, fileStats.archiveBytes)
+                CategorySummary(FileCategory.ARCHIVES, fileStats.archiveCount, fileStats.archiveBytes),
+                CategorySummary(FileCategory.LARGE_FILES, fileStats.largeCount, fileStats.largeBytes)
             )
         }
     }
@@ -338,7 +339,9 @@ class FileOperationsRepository(private val context: Context) {
         val apkCount: Int = 0,
         val apkBytes: Long = 0L,
         val archiveCount: Int = 0,
-        val archiveBytes: Long = 0L
+        val archiveBytes: Long = 0L,
+        val largeCount: Int = 0,
+        val largeBytes: Long = 0L
     )
 
     private fun countMediaStoreSummary(uri: Uri): Pair<Int, Long> {
@@ -367,6 +370,8 @@ class FileOperationsRepository(private val context: Context) {
         var docCnt = 0; var docBytes = 0L
         var apkCnt = 0; var apkBytes = 0L
         var arcCnt = 0; var arcBytes = 0L
+        var largeCnt = 0; var largeBytes = 0L
+        val largeThreshold = 50L * 1024L * 1024L
 
         val filesUri = MediaStore.Files.getContentUri("external")
         val cutoffSec = (System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000) / 1000L
@@ -397,6 +402,10 @@ class FileOperationsRepository(private val context: Context) {
                         recentCnt++
                         recentBytes += size
                     }
+                    if (size >= largeThreshold) {
+                        largeCnt++
+                        largeBytes += size
+                    }
                     val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
                     when {
                         ext == "apk" -> { apkCnt++; apkBytes += size }
@@ -406,7 +415,7 @@ class FileOperationsRepository(private val context: Context) {
                 }
             }
         }
-        return FilesTableStats(recentCnt, recentBytes, docCnt, docBytes, apkCnt, apkBytes, arcCnt, arcBytes)
+        return FilesTableStats(recentCnt, recentBytes, docCnt, docBytes, apkCnt, apkBytes, arcCnt, arcBytes, largeCnt, largeBytes)
     }
 
     suspend fun queryCategoryFiles(
@@ -454,8 +463,74 @@ class FileOperationsRepository(private val context: Context) {
                 showHidden = showHidden,
                 limit = limit
             )
+            FileCategory.LARGE_FILES -> queryLargeFiles(showHidden = showHidden, limit = limit)
             FileCategory.RECENT -> queryRecentMediaStoreFiles(showHidden = showHidden, limit = 120)
         }
+    }
+
+    private fun queryLargeFiles(
+        showHidden: Boolean,
+        limit: Int = 500
+    ): List<FileItem> {
+        val threshold = 50L * 1024L * 1024L
+        val result = mutableListOf<FileItem>()
+        val filesUri = MediaStore.Files.getContentUri("external")
+        val projection = arrayOf(
+            MediaStore.Files.FileColumns._ID,
+            MediaStore.Files.FileColumns.DISPLAY_NAME,
+            MediaStore.Files.FileColumns.DATA,
+            MediaStore.Files.FileColumns.SIZE,
+            MediaStore.Files.FileColumns.DATE_MODIFIED,
+            MediaStore.Files.FileColumns.MIME_TYPE
+        )
+        runCatching {
+            context.contentResolver.query(
+                filesUri,
+                projection,
+                "${MediaStore.Files.FileColumns.SIZE} >= ?",
+                arrayOf(threshold.toString()),
+                "${MediaStore.Files.FileColumns.SIZE} DESC"
+            )?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
+                val dataCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATA)
+                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
+                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
+                val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
+
+                while (cursor.moveToNext() && result.size < limit) {
+                    val id = cursor.getLong(idCol)
+                    val path = if (dataCol >= 0) cursor.getString(dataCol) ?: "" else ""
+                    val name = cursor.getString(nameCol) ?: path.substringAfterLast('/')
+                    if (name.isEmpty()) continue
+                    val hidden = name.startsWith(".")
+                    if (!showHidden && hidden) continue
+                    val ext = name.substringAfterLast('.', "")
+                    val mime = cursor.getString(mimeCol) ?: FileFormatters.getMimeType(ext)
+                    val contentUri = ContentUris.withAppendedId(filesUri, id).toString()
+                    val fSize = cursor.getLong(sizeCol)
+                    val lastModMs = cursor.getLong(dateCol) * 1000L
+                    result.add(
+                        FileItem(
+                            id = if (path.isNotEmpty()) path else contentUri,
+                            name = name,
+                            path = path.ifEmpty { contentUri },
+                            uriString = if (path.isNotEmpty() && File(path).canRead()) Uri.fromFile(File(path)).toString() else contentUri,
+                            isDirectory = false,
+                            size = fSize,
+                            lastModified = lastModMs,
+                            mimeType = mime,
+                            extension = ext,
+                            isHidden = hidden,
+                            typeGroup = FileFormatters.classifyFileType(false, ext, mime),
+                            formattedSize = FileFormatters.formatFileSize(fSize),
+                            formattedDate = FileFormatters.formatDateSmart(lastModMs)
+                        )
+                    )
+                }
+            }
+        }
+        return result.sortedByDescending { it.size }
     }
 
     private fun queryMediaStore(uri: Uri, limit: Int, showHidden: Boolean): List<FileItem> {
@@ -744,6 +819,160 @@ class FileOperationsRepository(private val context: Context) {
                 }
                 scanned++
                 if (scanned > 15_000) break
+            }
+        }
+        emit(sortItems(matches, SortOption.NAME, SortDirection.ASCENDING))
+    }.flowOn(Dispatchers.IO)
+
+    fun globalSearchFiles(
+        query: String,
+        volumes: List<StorageVolumeInfo>,
+        showHidden: Boolean
+    ): Flow<List<FileItem>> = flow {
+        val trimmed = query.trim().lowercase(Locale.ROOT)
+        if (trimmed.isEmpty()) {
+            emit(emptyList())
+            return@flow
+        }
+
+        val matches = mutableListOf<FileItem>()
+        val seenIds = HashSet<String>()
+        val queue = ArrayDeque<File>()
+
+        volumes.forEach { vol ->
+            if (!vol.isSafMounted) {
+                val root = File(vol.path)
+                if (root.exists() && root.isDirectory) queue.add(root)
+            } else {
+                val uriStr = vol.uriString ?: vol.path
+                runCatching {
+                    val doc = DocumentFile.fromTreeUri(context, Uri.parse(uriStr))
+                    doc?.listFiles()?.forEach { child ->
+                        coroutineContext.ensureActive()
+                        val name = child.name ?: return@forEach
+                        if (!showHidden && name.startsWith(".")) return@forEach
+                        if (name.lowercase(Locale.ROOT).contains(trimmed)) {
+                            val isDir = child.isDirectory
+                            val ext = if (isDir) "" else name.substringAfterLast('.', "")
+                            val mime = child.type ?: if (isDir) "resource/folder" else FileFormatters.getMimeType(ext)
+                            val id = child.uri.toString()
+                            if (seenIds.add(id)) {
+                                val len = if (isDir) 0L else child.length()
+                                val mod = child.lastModified()
+                                matches.add(
+                                    FileItem(
+                                        id = id,
+                                        name = name,
+                                        path = id,
+                                        uriString = id,
+                                        isDirectory = isDir,
+                                        size = len,
+                                        lastModified = mod,
+                                        mimeType = mime,
+                                        extension = ext,
+                                        isHidden = name.startsWith("."),
+                                        isSafDocument = true,
+                                        typeGroup = FileFormatters.classifyFileType(isDir, ext, mime),
+                                        formattedSize = if (isDir) "Folder" else FileFormatters.formatFileSize(len),
+                                        formattedDate = FileFormatters.formatDateSmart(mod)
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (queue.isEmpty() && matches.isEmpty()) {
+            val defaultRoot = Environment.getExternalStorageDirectory()
+            if (defaultRoot != null && defaultRoot.exists()) queue.add(defaultRoot)
+        }
+
+        var scanned = 0
+        while (queue.isNotEmpty() && matches.size < 160 && scanned <= 18_000) {
+            coroutineContext.ensureActive()
+            val dir = queue.removeFirst()
+            val children = dir.listFiles() ?: continue
+            for (child in children) {
+                coroutineContext.ensureActive()
+                val hidden = child.isHidden || child.name.startsWith(".")
+                if (!showHidden && hidden) continue
+                if (child.name.lowercase(Locale.ROOT).contains(trimmed)) {
+                    mapFileToItem(child, showHidden)?.let { item ->
+                        if (seenIds.add(item.id)) {
+                            matches.add(item)
+                            if (matches.size % 15 == 0) {
+                                emit(sortItems(matches, SortOption.NAME, SortDirection.ASCENDING))
+                            }
+                        }
+                    }
+                }
+                if (child.isDirectory && child.name != "Android") {
+                    queue.add(child)
+                }
+                scanned++
+                if (scanned > 18_000 || matches.size >= 160) break
+            }
+        }
+
+        // Also supplement from MediaStore Files index when local directory walk has limited visibility
+        if (matches.size < 80) {
+            runCatching {
+                val filesUri = MediaStore.Files.getContentUri("external")
+                val projection = arrayOf(
+                    MediaStore.Files.FileColumns._ID,
+                    MediaStore.Files.FileColumns.DISPLAY_NAME,
+                    MediaStore.Files.FileColumns.DATA,
+                    MediaStore.Files.FileColumns.SIZE,
+                    MediaStore.Files.FileColumns.DATE_MODIFIED,
+                    MediaStore.Files.FileColumns.MIME_TYPE
+                )
+                context.contentResolver.query(
+                    filesUri,
+                    projection,
+                    "${MediaStore.Files.FileColumns.DISPLAY_NAME} LIKE ?",
+                    arrayOf("%$trimmed%"),
+                    "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC"
+                )?.use { cursor ->
+                    val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+                    val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
+                    val dataCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATA)
+                    val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
+                    val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
+                    val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
+                    while (cursor.moveToNext() && matches.size < 160) {
+                        val path = if (dataCol >= 0) cursor.getString(dataCol) ?: "" else ""
+                        val name = cursor.getString(nameCol) ?: path.substringAfterLast('/')
+                        if (name.isEmpty()) continue
+                        if (!showHidden && name.startsWith(".")) continue
+                        val id = cursor.getLong(idCol)
+                        val contentUri = ContentUris.withAppendedId(filesUri, id).toString()
+                        val itemId = path.ifEmpty { contentUri }
+                        if (!seenIds.add(itemId)) continue
+                        val ext = name.substringAfterLast('.', "")
+                        val mime = cursor.getString(mimeCol) ?: FileFormatters.getMimeType(ext)
+                        val fSize = cursor.getLong(sizeCol)
+                        val modMs = cursor.getLong(dateCol) * 1000L
+                        matches.add(
+                            FileItem(
+                                id = itemId,
+                                name = name,
+                                path = itemId,
+                                uriString = if (path.isNotEmpty() && File(path).canRead()) Uri.fromFile(File(path)).toString() else contentUri,
+                                isDirectory = false,
+                                size = fSize,
+                                lastModified = modMs,
+                                mimeType = mime,
+                                extension = ext,
+                                isHidden = name.startsWith("."),
+                                typeGroup = FileFormatters.classifyFileType(false, ext, mime),
+                                formattedSize = FileFormatters.formatFileSize(fSize),
+                                formattedDate = FileFormatters.formatDateSmart(modMs)
+                            )
+                        )
+                    }
+                }
             }
         }
         emit(sortItems(matches, SortOption.NAME, SortDirection.ASCENDING))
@@ -1154,4 +1383,41 @@ class FileOperationsRepository(private val context: Context) {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
     }
+
+    suspend fun readTextFile(item: FileItem, maxBytes: Int = 1_500_000): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val inputStream = if (item.isSafDocument || item.uriString.startsWith("content://")) {
+                    context.contentResolver.openInputStream(Uri.parse(item.uriString))
+                        ?: error("Unable to open file stream")
+                } else {
+                    FileInputStream(File(item.path))
+                }
+                inputStream.use { inp ->
+                    val buffer = ByteArray(maxBytes)
+                    var totalRead = 0
+                    while (totalRead < maxBytes) {
+                        val read = inp.read(buffer, totalRead, maxBytes - totalRead)
+                        if (read <= 0) break
+                        totalRead += read
+                    }
+                    String(buffer, 0, totalRead, Charsets.UTF_8)
+                }
+            }
+        }
+
+    suspend fun saveTextFile(item: FileItem, content: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val bytes = content.toByteArray(Charsets.UTF_8)
+                if (item.isSafDocument || item.uriString.startsWith("content://")) {
+                    context.contentResolver.openOutputStream(Uri.parse(item.uriString), "wt")?.use { out ->
+                        out.write(bytes)
+                        out.flush()
+                    } ?: error("Cannot write to SAF document")
+                } else {
+                    File(item.path).writeBytes(bytes)
+                }
+            }
+        }
 }

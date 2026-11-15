@@ -34,16 +34,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.SettingsBrightness
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Usb
 import androidx.compose.material.icons.rounded.Verified
@@ -154,16 +153,18 @@ fun SettingsScreen(
             }
         }
 
-        // Quick Dark / Light Mode Toggle + Theme Style Presets
+        // Quick Dark / Light / System Mode Toggle + Theme Style Presets
         item(key = "theme_section") {
             Text(
-                text = "DISPLAY THEME (DARK / LIGHT)",
+                text = "DISPLAY THEME",
                 style = MaterialTheme.typography.labelMedium,
                 color = onyx.textTertiary
             )
             Spacer(modifier = Modifier.height(8.dp))
 
+            val isSystem = preferences.themeMode == ThemeMode.SYSTEM
             val isLight = preferences.themeMode == ThemeMode.LIGHT
+            val isDark = preferences.themeMode == ThemeMode.PURE_AMOLED || preferences.themeMode == ThemeMode.DEEP_OBSIDIAN
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -175,10 +176,10 @@ fun SettingsScreen(
             ) {
                 ThemeQuickButton(
                     icon = Icons.Rounded.DarkMode,
-                    label = "Dark Mode",
-                    selected = !isLight,
+                    label = "Dark",
+                    selected = isDark,
                     onClick = {
-                        if (isLight) onSelectThemeMode(ThemeMode.PURE_AMOLED)
+                        if (!isDark) onSelectThemeMode(ThemeMode.PURE_AMOLED)
                     },
                     modifier = Modifier
                         .weight(1f)
@@ -186,12 +187,21 @@ fun SettingsScreen(
                 )
                 ThemeQuickButton(
                     icon = Icons.Rounded.LightMode,
-                    label = "Light Mode",
+                    label = "Light",
                     selected = isLight,
                     onClick = { onSelectThemeMode(ThemeMode.LIGHT) },
                     modifier = Modifier
                         .weight(1f)
                         .testTag("quick_light_mode_button")
+                )
+                ThemeQuickButton(
+                    icon = Icons.Rounded.SettingsBrightness,
+                    label = "System",
+                    selected = isSystem,
+                    onClick = { onSelectThemeMode(ThemeMode.SYSTEM) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("quick_system_mode_button")
                 )
             }
 
@@ -718,48 +728,29 @@ fun SettingsScreen(
             }
         }
 
-        // App Information
+        // App Version & Copyright Only
         item(key = "about_section") {
-            Text(
-                text = "ABOUT",
-                style = MaterialTheme.typography.labelMedium,
-                color = onyx.textTertiary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(SettingsCardShape)
                     .background(onyx.cardSurface)
                     .border(0.85.dp, onyx.subtleBorder, SettingsCardShape)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+                    .testTag("settings_about_card"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Info, contentDescription = null, tint = onyx.accent)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = "Orion Explorer  v1.0",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = onyx.textPrimary
-                        )
-                        Text(
-                            text = "Pure AMOLED & Light File Explorer & Media Suite",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = onyx.textSecondary
-                        )
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Code, contentDescription = null, tint = onyx.textTertiary, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Jetpack Compose • Material 3 • Media3 ExoPlayer • Coil • DataStore",
-                        style = MonoMetadataStyle,
-                        color = onyx.textTertiary
-                    )
-                }
+                Text(
+                    text = "Orion Explorer  v1.0",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = onyx.textPrimary
+                )
+                Text(
+                    text = "Copyright © 2026 ORION™",
+                    style = MonoMetadataStyle,
+                    color = onyx.textSecondary
+                )
             }
         }
 

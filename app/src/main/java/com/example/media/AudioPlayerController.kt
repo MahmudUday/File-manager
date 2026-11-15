@@ -61,6 +61,8 @@ data class AudioPlaybackState(
     val durationMs: Long = 0L,
     val shuffleEnabled: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
+    val playbackSpeed: Float = 1f,
+    val sleepTimerMinutes: Int? = null,
     val isSheetExpanded: Boolean = false
 ) {
     val progress: Float
@@ -76,6 +78,7 @@ class AudioPlayerController(private val context: Context) {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
     private var positionJob: Job? = null
+    private var sleepTimerJob: Job? = null
 
     fun ensureConnected(onConnected: (() -> Unit)? = null) {
         val existing = mediaController
@@ -305,11 +308,47 @@ class AudioPlayerController(private val context: Context) {
         }
     }
 
+    fun setPlaybackSpeed(speed: Float) {
+        val clamped = speed.coerceIn(0.5f, 2.0f)
+        mediaController?.setPlaybackSpeed(clamped)
+        _state.update { it.copy(playbackSpeed = clamped) }
+    }
+
+    fun cycleSleepTimer() {
+        val nextMinutes = when (_state.value.sleepTimerMinutes) {
+            null -> 15
+            15 -> 30
+            30 -> 60
+            else -> null
+        }
+        sleepTimerJob?.cancel()
+        _state.update { it.copy(sleepTimerMinutes = nextMinutes) }
+        if (nextMinutes != null) {
+            sleepTimerJob = scope.launch {
+                var remaining = nextMinutes
+                while (remaining > 0 && isActive) {
+                    delay(60_000L)
+                    remaining--
+                    _state.update { it.copy(sleepTimerMinutes = if (remaining > 0) remaining else null) }
+                }
+                mediaController?.pause()
+            }
+        }
+    }
+
+    fun seekBy(deltaMs: Long) {
+        val controller = mediaController ?: return
+        val dur = controller.duration.takeIf { it > 0L } ?: _state.value.durationMs
+        val target = (controller.currentPosition + deltaMs).coerceIn(0L, dur.coerceAtLeast(0L))
+        seekTo(target)
+    }
+
     fun setSheetExpanded(expanded: Boolean) {
         _state.update { it.copy(isSheetExpanded = expanded) }
     }
 
     fun stopAndDismiss() {
+        sleepTimerJob?.cancel()
         mediaController?.stop()
         mediaController?.clearMediaItems()
         stopPositionTicker()

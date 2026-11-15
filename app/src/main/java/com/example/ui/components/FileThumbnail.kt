@@ -2,12 +2,9 @@ package com.example.ui.components
 
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -48,7 +45,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -223,15 +219,6 @@ fun FileListRow(
     val onyx = LocalOnyxColors.current
     val haptic = LocalHapticFeedback.current
 
-    // Lightweight GPU-only scroll entrance micro-animation
-    val appearProgress = remember(item.id) { Animatable(0f) }
-    LaunchedEffect(item.id) {
-        appearProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 145, easing = FastOutSlowInEasing)
-        )
-    }
-
     val selectScale by animateFloatAsState(
         targetValue = if (isSelected) 0.98f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
@@ -255,12 +242,9 @@ fun FileListRow(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
-                val p = appearProgress.value
-                val combinedScale = selectScale * (0.965f + 0.035f * p)
-                scaleX = combinedScale
-                scaleY = combinedScale
-                translationY = (1f - p) * 14f
-                alpha = (0.78f + 0.22f * p) * (if (item.isHidden) 0.68f else 1f)
+                scaleX = selectScale
+                scaleY = selectScale
+                alpha = if (item.isHidden) 0.68f else 1f
             }
             .clip(ListRowShape)
             .background(bgColor)
@@ -345,14 +329,6 @@ fun FileGridCard(
     val onyx = LocalOnyxColors.current
     val haptic = LocalHapticFeedback.current
 
-    val appearProgress = remember(item.id) { Animatable(0f) }
-    LaunchedEffect(item.id) {
-        appearProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 155, easing = FastOutSlowInEasing)
-        )
-    }
-
     val selectScale by animateFloatAsState(
         targetValue = if (isSelected) 0.95f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
@@ -370,12 +346,9 @@ fun FileGridCard(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
-                val p = appearProgress.value
-                val combinedScale = selectScale * (0.955f + 0.045f * p)
-                scaleX = combinedScale
-                scaleY = combinedScale
-                translationY = (1f - p) * 16f
-                alpha = (0.78f + 0.22f * p) * (if (item.isHidden) 0.68f else 1f)
+                scaleX = selectScale
+                scaleY = selectScale
+                alpha = if (item.isHidden) 0.68f else 1f
             }
             .clip(GridCardShape)
             .background(bgColor)

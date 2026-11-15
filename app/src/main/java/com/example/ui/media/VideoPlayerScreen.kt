@@ -36,16 +36,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.BrightnessHigh
 import androidx.compose.material.icons.rounded.Forward10
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -68,6 +74,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -93,8 +100,6 @@ fun VideoPlayerScreen(
     val activity = context as? Activity
     val onyx = LocalOnyxColors.current
 
-    BackHandler { onClose() }
-
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1) }
 
@@ -107,6 +112,11 @@ fun VideoPlayerScreen(
     }
 
     var isPlaying by remember { mutableStateOf(true) }
+    var isMuted by remember { mutableStateOf(false) }
+    var isLooping by remember { mutableStateOf(false) }
+    var isLocked by remember { mutableStateOf(false) }
+    var showUnlockPill by remember { mutableStateOf(false) }
+
     var currentPos by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
     var showControls by remember { mutableStateOf(true) }
@@ -115,12 +125,20 @@ fun VideoPlayerScreen(
 
     var gestureOverlayLabel by remember { mutableStateOf<String?>(null) }
     var gestureOverlayIsBrightness by remember { mutableStateOf(true) }
-    var gestureFraction by remember { mutableFloatStateOf(0.5f) }
+    var gestureFraction by remember { mutableFloatStateOf(-1f) }
 
     var brightnessLevel by remember {
         mutableFloatStateOf(
             activity?.window?.attributes?.screenBrightness?.takeIf { it >= 0f } ?: 0.5f
         )
+    }
+
+    BackHandler {
+        if (isLocked) {
+            showUnlockPill = true
+        } else {
+            onClose()
+        }
     }
 
     DisposableEffect(exoPlayer) {
@@ -137,7 +155,6 @@ fun VideoPlayerScreen(
         onDispose {
             exoPlayer.removeListener(listener)
             exoPlayer.release()
-            // Restore default orientation & brightness
             activity?.let { act ->
                 act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 val lp = act.window.attributes
@@ -156,10 +173,17 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, isPlaying) {
-        if (showControls && isPlaying) {
+    LaunchedEffect(showControls, isPlaying, isLocked) {
+        if (showControls && isPlaying && !isLocked) {
             delay(3500L)
             showControls = false
+        }
+    }
+
+    LaunchedEffect(showUnlockPill) {
+        if (showUnlockPill) {
+            delay(2500L)
+            showUnlockPill = false
         }
     }
 
@@ -168,6 +192,12 @@ fun VideoPlayerScreen(
             delay(1100L)
             gestureOverlayLabel = null
         }
+    }
+
+    val resizeLabel = when (resizeMode) {
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "FILL"
+        AspectRatioFrameLayout.RESIZE_MODE_FILL -> "STRETCH"
+        else -> "FIT"
     }
 
     Box(
@@ -200,30 +230,41 @@ fun VideoPlayerScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxSize()
-                    .pointerInput(Unit) {
+                    .pointerInput(isLocked) {
                         detectTapGestures(
-                            onTap = { showControls = !showControls },
+                            onTap = {
+                                if (isLocked) {
+                                    showUnlockPill = !showUnlockPill
+                                } else {
+                                    showControls = !showControls
+                                }
+                            },
                             onDoubleTap = {
-                                val next = (exoPlayer.currentPosition - 10_000L).coerceAtLeast(0L)
-                                exoPlayer.seekTo(next)
-                                currentPos = next
-                                gestureOverlayIsBrightness = true
-                                gestureOverlayLabel = "-10s"
+                                if (!isLocked) {
+                                    val next = (exoPlayer.currentPosition - 10_000L).coerceAtLeast(0L)
+                                    exoPlayer.seekTo(next)
+                                    currentPos = next
+                                    gestureOverlayIsBrightness = true
+                                    gestureFraction = -1f
+                                    gestureOverlayLabel = "-10s"
+                                }
                             }
                         )
                     }
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures { _, dragAmount ->
-                            val delta = -dragAmount / size.height.toFloat()
-                            brightnessLevel = (brightnessLevel + delta).coerceIn(0.05f, 1f)
-                            activity?.let { act ->
-                                val lp = act.window.attributes
-                                lp.screenBrightness = brightnessLevel
-                                act.window.attributes = lp
+                    .pointerInput(isLocked) {
+                        if (!isLocked) {
+                            detectVerticalDragGestures { _, dragAmount ->
+                                val delta = -dragAmount / size.height.toFloat()
+                                brightnessLevel = (brightnessLevel + delta).coerceIn(0.05f, 1f)
+                                activity?.let { act ->
+                                    val lp = act.window.attributes
+                                    lp.screenBrightness = brightnessLevel
+                                    act.window.attributes = lp
+                                }
+                                gestureOverlayIsBrightness = true
+                                gestureFraction = brightnessLevel
+                                gestureOverlayLabel = "Brightness ${(brightnessLevel * 100).toInt()}%"
                             }
-                            gestureOverlayIsBrightness = true
-                            gestureFraction = brightnessLevel
-                            gestureOverlayLabel = "Brightness ${(brightnessLevel * 100).toInt()}%"
                         }
                     }
             )
@@ -231,65 +272,118 @@ fun VideoPlayerScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxSize()
-                    .pointerInput(Unit) {
+                    .pointerInput(isLocked) {
                         detectTapGestures(
-                            onTap = { showControls = !showControls },
+                            onTap = {
+                                if (isLocked) {
+                                    showUnlockPill = !showUnlockPill
+                                } else {
+                                    showControls = !showControls
+                                }
+                            },
                             onDoubleTap = {
-                                val next = (exoPlayer.currentPosition + 10_000L).coerceAtMost(duration.coerceAtLeast(0L))
-                                exoPlayer.seekTo(next)
-                                currentPos = next
-                                gestureOverlayIsBrightness = false
-                                gestureOverlayLabel = "+10s"
+                                if (!isLocked) {
+                                    val next = (exoPlayer.currentPosition + 10_000L).coerceAtMost(duration.coerceAtLeast(0L))
+                                    exoPlayer.seekTo(next)
+                                    currentPos = next
+                                    gestureOverlayIsBrightness = false
+                                    gestureFraction = -1f
+                                    gestureOverlayLabel = "+10s"
+                                }
                             }
                         )
                     }
-                    .pointerInput(Unit) {
-                        var volAccum = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume
-                        detectVerticalDragGestures { _, dragAmount ->
-                            val delta = -dragAmount / size.height.toFloat()
-                            volAccum = (volAccum + delta).coerceIn(0f, 1f)
-                            val targetVol = (volAccum * maxVolume).toInt().coerceIn(0, maxVolume)
-                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                            gestureOverlayIsBrightness = false
-                            gestureFraction = volAccum
-                            gestureOverlayLabel = "Volume ${(volAccum * 100).toInt()}%"
+                    .pointerInput(isLocked) {
+                        if (!isLocked) {
+                            var volAccum = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume
+                            detectVerticalDragGestures { _, dragAmount ->
+                                val delta = -dragAmount / size.height.toFloat()
+                                volAccum = (volAccum + delta).coerceIn(0f, 1f)
+                                val targetVol = (volAccum * maxVolume).toInt().coerceIn(0, maxVolume)
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                                gestureOverlayIsBrightness = false
+                                gestureFraction = volAccum
+                                gestureOverlayLabel = "Volume ${(volAccum * 100).toInt()}%"
+                            }
                         }
                     }
             )
         }
 
-        // Gesture HUD Pill
+        // Gesture HUD Pill with progress meter
         AnimatedVisibility(
             visible = gestureOverlayLabel != null,
             enter = fadeIn(tween(100)),
             exit = fadeOut(tween(200)),
             modifier = Modifier.align(Alignment.Center)
         ) {
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Color.Black.copy(alpha = 0.80f))
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (gestureOverlayIsBrightness) Icons.Rounded.BrightnessHigh else Icons.AutoMirrored.Rounded.VolumeUp,
+                        contentDescription = null,
+                        tint = onyx.accent,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = gestureOverlayLabel.orEmpty(),
+                        style = MonoMetadataStyle.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White
+                    )
+                }
+                if (gestureFraction >= 0f) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { gestureFraction.coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .width(140.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = onyx.accent,
+                        trackColor = Color.White.copy(alpha = 0.25f)
+                    )
+                }
+            }
+        }
+
+        // Floating Unlock Pill when Screen Lock is enabled
+        AnimatedVisibility(
+            visible = isLocked && showUnlockPill,
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(200)),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(bottom = 32.dp)
+        ) {
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color.Black.copy(alpha = 0.78f))
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                    .background(Color.Black.copy(alpha = 0.82f))
+                    .clickable {
+                        isLocked = false
+                        showUnlockPill = false
+                        showControls = true
+                    }
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = if (gestureOverlayIsBrightness) Icons.Rounded.BrightnessHigh else Icons.AutoMirrored.Rounded.VolumeUp,
-                    contentDescription = null,
-                    tint = onyx.accent,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = gestureOverlayLabel.orEmpty(),
-                    style = MonoMetadataStyle,
-                    color = Color.White
-                )
+                Icon(Icons.Rounded.LockOpen, contentDescription = "Unlock screen", tint = onyx.accent, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Tap to Unlock Controls", style = MaterialTheme.typography.labelLarge, color = Color.White)
             }
         }
 
         // Player Controls HUD
         AnimatedVisibility(
-            visible = showControls,
+            visible = showControls && !isLocked,
             enter = fadeIn(tween(180)),
             exit = fadeOut(tween(180)),
             modifier = Modifier.fillMaxSize()
@@ -316,14 +410,20 @@ fun VideoPlayerScreen(
                     IconButton(onClick = onClose, modifier = Modifier.testTag("video_player_back")) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
-                    Text(
-                        text = videoItem.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = videoItem.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${FileFormatters.formatFileSize(videoItem.size)}  •  $resizeLabel",
+                            style = MonoMetadataStyle,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
                     Text(
                         text = "${playbackSpeed}x",
                         style = MonoMetadataStyle,
@@ -345,10 +445,20 @@ fun VideoPlayerScreen(
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     )
                     IconButton(onClick = {
-                        resizeMode = if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) {
-                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        } else {
-                            AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        isMuted = !isMuted
+                        exoPlayer.volume = if (isMuted) 0f else 1f
+                    }) {
+                        Icon(
+                            imageVector = if (isMuted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                            contentDescription = if (isMuted) "Unmute" else "Mute",
+                            tint = if (isMuted) onyx.accent else Color.White
+                        )
+                    }
+                    IconButton(onClick = {
+                        resizeMode = when (resizeMode) {
+                            AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                         }
                     }) {
                         Icon(Icons.Rounded.AspectRatio, contentDescription = "Toggle aspect ratio", tint = Color.White)
@@ -414,14 +524,14 @@ fun VideoPlayerScreen(
                     }
                 }
 
-                // Bottom Seekbar
+                // Bottom Seekbar + Loop & Lock Controls
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.88f))
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.90f))
                             )
                         )
                         .windowInsetsPadding(WindowInsets.navigationBars)
@@ -443,18 +553,45 @@ fun VideoPlayerScreen(
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = FileFormatters.formatDuration(currentPos),
+                            text = "${FileFormatters.formatDuration(currentPos)} / ${FileFormatters.formatDuration(duration)}",
                             style = MonoMetadataStyle,
                             color = Color.White
                         )
-                        Text(
-                            text = FileFormatters.formatDuration(duration),
-                            style = MonoMetadataStyle,
-                            color = Color.White.copy(alpha = 0.72f)
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            IconButton(
+                                onClick = {
+                                    isLooping = !isLooping
+                                    exoPlayer.repeatMode = if (isLooping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isLooping) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                                    contentDescription = "Loop video",
+                                    tint = if (isLooping) onyx.accent else Color.White.copy(alpha = 0.78f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    isLocked = true
+                                    showControls = false
+                                    showUnlockPill = true
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Lock,
+                                    contentDescription = "Lock screen controls",
+                                    tint = Color.White.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }

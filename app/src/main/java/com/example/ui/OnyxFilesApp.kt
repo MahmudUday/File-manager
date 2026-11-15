@@ -1,5 +1,8 @@
 package com.example.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -21,6 +24,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -99,6 +103,7 @@ import com.example.ui.components.TextInputDialog
 import com.example.data.model.ThemeMode
 import com.example.ui.media.AudioPlayerSheet
 import com.example.ui.media.ImageViewerScreen
+import com.example.ui.media.TextEditorScreen
 import com.example.ui.media.VideoPlayerScreen
 import com.example.ui.screens.CategoryFilesScreen
 import com.example.ui.screens.FavoritesScreen
@@ -108,6 +113,7 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.LocalOnyxColors
 import com.example.ui.theme.OnyxFilesTheme
 import com.example.ui.viewmodel.MainViewModel
+import com.example.util.FileFormatters
 import com.example.util.PermissionHelper
 import kotlinx.serialization.Serializable
 
@@ -146,6 +152,7 @@ fun OnyxFilesApp(
 
     val preferences by viewModel.preferences.collectAsStateWithLifecycle()
     val dashboardState by viewModel.dashboardState.collectAsStateWithLifecycle()
+    val globalSearchState by viewModel.globalSearchState.collectAsStateWithLifecycle()
     val browserState by viewModel.browserState.collectAsStateWithLifecycle()
     val categoryState by viewModel.categoryState.collectAsStateWithLifecycle()
     val clipboard by viewModel.clipboard.collectAsStateWithLifecycle()
@@ -157,10 +164,14 @@ fun OnyxFilesApp(
     val isExpandedWidth = widthSizeClass != WindowWidthSizeClass.Compact
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
+    val isSystemDark = isSystemInDarkTheme()
+    val isLightSystemBars = preferences.themeMode == ThemeMode.LIGHT ||
+        (preferences.themeMode == ThemeMode.SYSTEM && !isSystemDark)
 
-    // Media viewer overlays
+    // Media & editor overlays
     var imageViewerData by remember { mutableStateOf<Pair<List<FileItem>, Int>?>(null) }
     var activeVideoItem by remember { mutableStateOf<FileItem?>(null) }
+    var activeTextItem by remember { mutableStateOf<FileItem?>(null) }
 
     // Modal sheets & dialogs
     var actionSheetItem by remember { mutableStateOf<FileItem?>(null) }
@@ -177,9 +188,9 @@ fun OnyxFilesApp(
         onApplyRefreshRate(preferences.highRefreshRate)
     }
 
-    // Apply Light vs Dark status/navigation bar contrast dynamically
-    LaunchedEffect(preferences.themeMode) {
-        onApplySystemBarTheme(preferences.themeMode == ThemeMode.LIGHT)
+    // Apply Light vs Dark status/navigation bar contrast dynamically (including System mode)
+    LaunchedEffect(isLightSystemBars) {
+        onApplySystemBarTheme(isLightSystemBars)
     }
 
     // Refresh permissions lightly when user returns from Android Settings
@@ -290,24 +301,30 @@ fun OnyxFilesApp(
     val handleFileOpen: (FileItem, List<FileItem>) -> Unit = { item, siblingList ->
         if (item.isDirectory) {
             viewModel.openDirectory(item.path, isSaf = item.isSafDocument)
+            if (navController.currentBackStackEntry?.destination?.hasRoute(FilesRoute::class) != true) {
+                navigateToTab(FilesRoute)
+            }
         } else if (item.extension.isBlank()) {
             openAsTarget = item
         } else {
             viewModel.recordFileOpened(item)
-            when (item.typeGroup) {
-                FileTypeGroup.IMAGE -> {
+            when {
+                item.typeGroup == FileTypeGroup.IMAGE -> {
                     val images = siblingList.filter { it.typeGroup == FileTypeGroup.IMAGE }
                         .ifEmpty { listOf(item) }
                     val index = images.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
                     imageViewerData = images to index
                 }
-                FileTypeGroup.VIDEO -> {
+                item.typeGroup == FileTypeGroup.VIDEO -> {
                     activeVideoItem = item
                 }
-                FileTypeGroup.AUDIO -> {
+                item.typeGroup == FileTypeGroup.AUDIO -> {
                     viewModel.playAudioFromList(item, siblingList)
                 }
-                FileTypeGroup.ARCHIVE -> {
+                FileFormatters.isTextViewable(item.extension, item.mimeType) -> {
+                    activeTextItem = item
+                }
+                item.typeGroup == FileTypeGroup.ARCHIVE -> {
                     actionSheetItem = item
                 }
                 else -> {
@@ -483,6 +500,7 @@ fun OnyxFilesApp(
                         composable<HomeRoute> {
                             HomeDashboardScreen(
                                 dashboardState = dashboardState,
+                                globalSearchState = globalSearchState,
                                 preferences = preferences,
                                 isExpandedWidth = isExpandedWidth,
                                 onVolumeClick = { volume ->
@@ -515,7 +533,7 @@ fun OnyxFilesApp(
                                         mimeType = recent.mimeType,
                                         extension = ext,
                                         isHidden = recent.name.startsWith("."),
-                                        typeGroup = com.example.util.FileFormatters.classifyFileType(
+                                        typeGroup = FileFormatters.classifyFileType(
                                             false,
                                             ext,
                                             recent.mimeType
@@ -523,9 +541,13 @@ fun OnyxFilesApp(
                                     )
                                     handleFileOpen(tempItem, listOf(tempItem))
                                 },
-                                onSearchClick = {
-                                    viewModel.setSearchActive(true)
-                                    navigateToTab(FilesRoute)
+                                onGlobalSearchQueryChange = { viewModel.updateGlobalSearchQuery(it) },
+                                onClearGlobalSearch = { viewModel.clearGlobalSearch() },
+                                onSearchResultClick = { item, results ->
+                                    handleFileOpen(item, results)
+                                },
+                                onSearchResultMoreClick = { item ->
+                                    actionSheetItem = item
                                 },
                                 onRequestAllFilesAccess = requestAllFilesAccess,
                                 onRequestMediaPermissions = {
@@ -574,6 +596,7 @@ fun OnyxFilesApp(
                                 onSearchQueryChange = { q -> viewModel.updateSearchQuery(q) },
                                 onToggleDeepSearch = { viewModel.toggleDeepSearch() },
                                 onSelectAll = { viewModel.selectAllDisplayed() },
+                                onInvertSelection = { viewModel.invertSelection() },
                                 onClearSelection = { viewModel.clearSelection() },
                                 onCopySelected = { items -> viewModel.setClipboard(ClipboardMode.COPY, items) },
                                 onCutSelected = { items -> viewModel.setClipboard(ClipboardMode.CUT, items) },
@@ -714,7 +737,8 @@ fun OnyxFilesApp(
                         onDelete = { target ->
                             deleteTargets = listOf(target)
                             imageViewerData = null
-                        }
+                        },
+                        onOpenExternal = openExternal
                     )
                 }
             }
@@ -733,6 +757,22 @@ fun OnyxFilesApp(
                 }
             }
 
+            // Fullscreen Built-in Text / Code Viewer & Editor Overlay
+            AnimatedVisibility(
+                visible = activeTextItem != null,
+                enter = slideInVertically { it / 8 } + fadeIn(tween(200)),
+                exit = slideOutVertically { it / 8 } + fadeOut(tween(160))
+            ) {
+                activeTextItem?.let { textItem ->
+                    TextEditorScreen(
+                        item = textItem,
+                        onLoadText = { viewModel.readTextFile(it) },
+                        onSaveText = { fileItem, content -> viewModel.saveTextFile(fileItem, content) },
+                        onClose = { activeTextItem = null }
+                    )
+                }
+            }
+
             // Expanded Audio Player Modal Sheet
             if (audioState.isSheetExpanded && audioState.currentTrack != null) {
                 AudioPlayerSheet(
@@ -742,8 +782,20 @@ fun OnyxFilesApp(
                     onNext = { viewModel.audioController.skipNext() },
                     onPrevious = { viewModel.audioController.skipPrevious() },
                     onSeek = { viewModel.audioController.seekTo(it) },
+                    onSeekBy = { viewModel.audioController.seekBy(it) },
                     onToggleShuffle = { viewModel.audioController.toggleShuffle() },
                     onCycleRepeat = { viewModel.audioController.cycleRepeatMode() },
+                    onCycleSpeed = {
+                        val nextSpeed = when (audioState.playbackSpeed) {
+                            1f -> 1.25f
+                            1.25f -> 1.5f
+                            1.5f -> 2f
+                            2f -> 0.75f
+                            else -> 1f
+                        }
+                        viewModel.audioController.setPlaybackSpeed(nextSpeed)
+                    },
+                    onCycleSleepTimer = { viewModel.audioController.cycleSleepTimer() },
                     onSelectQueueIndex = { viewModel.audioController.playQueueIndex(it) }
                 )
             }
@@ -758,6 +810,11 @@ fun OnyxFilesApp(
                     onShare = { shareItems(listOf(item)) },
                     onCopy = { viewModel.setClipboard(ClipboardMode.COPY, listOf(item)) },
                     onCut = { viewModel.setClipboard(ClipboardMode.CUT, listOf(item)) },
+                    onCopyPath = {
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        cm?.setPrimaryClip(ClipData.newPlainText("File Path", item.path))
+                        Toast.makeText(context, "Copied path: ${item.path}", Toast.LENGTH_SHORT).show()
+                    },
                     onRename = { renameTarget = item },
                     onCompress = { zipTargets = listOf(item) },
                     onExtract = { viewModel.extractZip(item) },
@@ -770,6 +827,10 @@ fun OnyxFilesApp(
             openAsTarget?.let { target ->
                 OpenAsBottomSheet(
                     item = target,
+                    onOpenTextEditor = {
+                        viewModel.recordFileOpened(target)
+                        activeTextItem = target
+                    },
                     onSelectMimeType = { mime -> openAsMime(target, mime) },
                     onDismiss = { openAsTarget = null }
                 )

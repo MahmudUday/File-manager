@@ -34,6 +34,8 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
@@ -476,6 +478,7 @@ fun FileActionBottomSheet(
     onShare: () -> Unit,
     onCopy: () -> Unit,
     onCut: () -> Unit,
+    onCopyPath: () -> Unit,
     onRename: () -> Unit,
     onCompress: () -> Unit,
     onExtract: () -> Unit,
@@ -560,6 +563,9 @@ fun FileActionBottomSheet(
             }
             SheetActionRow(Icons.Rounded.ContentPaste, "Move / Cut") {
                 onDismiss(); onCut()
+            }
+            SheetActionRow(Icons.Rounded.ContentCopy, "Copy Path") {
+                onDismiss(); onCopyPath()
             }
             SheetActionRow(Icons.Rounded.DriveFileRenameOutline, "Rename") {
                 onDismiss(); onRename()
@@ -719,13 +725,14 @@ private fun PropertyRow(label: String, value: String) {
 @Composable
 fun OpenAsBottomSheet(
     item: FileItem,
+    onOpenTextEditor: () -> Unit,
     onSelectMimeType: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val onyx = LocalOnyxColors.current
     val options = remember {
         listOf(
-            Triple(Icons.Rounded.Description, "Text / Code", "text/plain"),
+            Triple(Icons.Rounded.Description, "Text / Code (External)", "text/plain"),
             Triple(Icons.Rounded.Image, "Image", "image/*"),
             Triple(Icons.Rounded.AudioFile, "Audio", "audio/*"),
             Triple(Icons.Rounded.VideoFile, "Video", "video/*"),
@@ -773,6 +780,23 @@ fun OpenAsBottomSheet(
             Spacer(modifier = Modifier.height(14.dp))
             HorizontalDivider(color = onyx.glowBorder.copy(alpha = 0.45f))
             Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(SheetRowShape)
+                    .clickable {
+                        onDismiss()
+                        onOpenTextEditor()
+                    }
+                    .padding(horizontal = 10.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Rounded.Code, contentDescription = "Built-in Text Editor", tint = onyx.accent, modifier = Modifier.size(21.dp))
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(text = "Built-in Text / Code Viewer", style = MaterialTheme.typography.bodyLarge, color = onyx.accent, modifier = Modifier.weight(1f))
+                Text(text = "INTERNAL", style = MonoMetadataStyle, color = onyx.accent)
+            }
 
             options.forEach { (icon, label, mime) ->
                 Row(

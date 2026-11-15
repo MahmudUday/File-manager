@@ -79,6 +79,15 @@ data class DashboardUiState(
 )
 
 @Immutable
+data class GlobalSearchUiState(
+    val query: String = "",
+    val results: List<FileItem> = emptyList(),
+    val isSearching: Boolean = false
+) {
+    val isActive: Boolean get() = query.isNotBlank()
+}
+
+@Immutable
 data class CategoryUiState(
     val category: FileCategory = FileCategory.IMAGES,
     val items: List<FileItem> = emptyList(),
@@ -127,8 +136,12 @@ class MainViewModel(
     private val _isLoadingProperties = MutableStateFlow(false)
     val isLoadingProperties: StateFlow<Boolean> = _isLoadingProperties.asStateFlow()
 
+    private val _globalSearchState = MutableStateFlow(GlobalSearchUiState())
+    val globalSearchState: StateFlow<GlobalSearchUiState> = _globalSearchState.asStateFlow()
+
     private var directoryJob: Job? = null
     private var searchJob: Job? = null
+    private var globalSearchJob: Job? = null
     private var categoryJob: Job? = null
 
     init {
@@ -330,6 +343,37 @@ class MainViewModel(
         }
     }
 
+    fun updateGlobalSearchQuery(query: String) {
+        _globalSearchState.update { it.copy(query = query) }
+        globalSearchJob?.cancel()
+        if (query.isBlank()) {
+            _globalSearchState.value = GlobalSearchUiState()
+            return
+        }
+        val volumes = _dashboardState.value.volumes
+        val showHidden = preferences.value.showHiddenFiles
+        globalSearchJob = viewModelScope.launch {
+            delay(180L)
+            _globalSearchState.update { it.copy(isSearching = true) }
+            fileRepo.globalSearchFiles(
+                query = query,
+                volumes = volumes,
+                showHidden = showHidden
+            )
+                .catch {
+                    _globalSearchState.update { it.copy(isSearching = false) }
+                }
+                .collect { results ->
+                    _globalSearchState.update { it.copy(results = results, isSearching = false) }
+                }
+        }
+    }
+
+    fun clearGlobalSearch() {
+        globalSearchJob?.cancel()
+        _globalSearchState.value = GlobalSearchUiState()
+    }
+
     fun openCategory(category: FileCategory) {
         categoryJob?.cancel()
         _categoryState.value = CategoryUiState(category = category, isLoading = true)
@@ -338,11 +382,9 @@ class MainViewModel(
                 category = category,
                 showHidden = preferences.value.showHiddenFiles
             )
-            val sorted = fileRepo.sortItems(
-                items,
-                preferences.value.sortOption,
-                preferences.value.sortDirection
-            )
+            val sortOpt = if (category == FileCategory.LARGE_FILES) SortOption.SIZE else preferences.value.sortOption
+            val sortDir = if (category == FileCategory.LARGE_FILES) SortDirection.DESCENDING else preferences.value.sortDirection
+            val sorted = fileRepo.sortItems(items, sortOpt, sortDir)
             _categoryState.update { it.copy(items = sorted, isLoading = false) }
         }
     }
@@ -373,6 +415,14 @@ class MainViewModel(
         _browserState.update { state ->
             val allIds = state.displayedItems.map { it.id }.toSet()
             state.copy(selectedIds = allIds)
+        }
+    }
+
+    fun invertSelection() {
+        _browserState.update { state ->
+            val allIds = state.displayedItems.map { it.id }.toSet()
+            val inverted = allIds - state.selectedIds
+            state.copy(selectedIds = inverted)
         }
     }
 
@@ -644,6 +694,22 @@ class MainViewModel(
     fun createShareIntent(items: List<FileItem>) = fileRepo.createShareIntent(items)
     fun createOpenExternalIntent(item: FileItem) = fileRepo.createOpenExternalIntent(item)
     fun createOpenAsIntent(item: FileItem, mimeType: String) = fileRepo.createOpenAsIntent(item, mimeType)
+
+    suspend fun readTextFile(item: FileItem): Result<String> = fileRepo.readTextFile(item)
+
+    fun saveTextFile(item: FileItem, content: String, onSaved: () -> Unit = {}) {
+        viewModelScope.launch {
+            fileRepo.saveTextFile(item, content)
+                .onSuccess {
+                    _operationState.value = OperationState.Success("Saved ${item.name}")
+                    reloadCurrentDirectory()
+                    onSaved()
+                }
+                .onFailure {
+                    _operationState.value = OperationState.Error(it.message ?: "Failed to save file")
+                }
+        }
+    }
 
     class Factory(
         private val context: Context,

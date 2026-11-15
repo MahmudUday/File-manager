@@ -114,6 +114,15 @@ object FileFormatters {
     val DOCUMENT_EXTENSIONS = setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "csv", "md", "epub")
     val ARCHIVE_EXTENSIONS = setOf("zip", "rar", "7z", "tar", "gz", "bz2", "xz", "jar")
     val CODE_EXTENSIONS = setOf("kt", "kts", "java", "xml", "json", "js", "ts", "py", "html", "css", "c", "cpp", "h", "sh", "yaml", "yml", "sql", "gradle")
+    val PLAIN_TEXT_EXTENSIONS = setOf("txt", "md", "log", "csv", "ini", "conf", "cfg", "env", "properties", "toml", "gitignore")
+
+    fun isTextViewable(extension: String, mimeType: String): Boolean {
+        val ext = extension.lowercase(Locale.ROOT)
+        val mime = mimeType.lowercase(Locale.ROOT)
+        return ext in CODE_EXTENSIONS || ext in PLAIN_TEXT_EXTENSIONS ||
+            (mime.startsWith("text/") && ext != "rtf") ||
+            mime == "application/json" || mime == "application/xml"
+    }
 }
 
 object PermissionHelper {

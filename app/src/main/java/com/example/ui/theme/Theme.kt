@@ -1,5 +1,6 @@
 package com.example.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -65,8 +66,13 @@ fun OnyxFilesTheme(
     accentPreset: AccentPreset = AccentPreset.CYAN,
     content: @Composable () -> Unit
 ) {
-    val isLight = themeMode == ThemeMode.LIGHT
-    val isPureAmoled = themeMode == ThemeMode.PURE_AMOLED
+    val systemDark = isSystemInDarkTheme()
+    val effectiveMode = when (themeMode) {
+        ThemeMode.SYSTEM -> if (systemDark) ThemeMode.PURE_AMOLED else ThemeMode.LIGHT
+        else -> themeMode
+    }
+    val isLight = effectiveMode == ThemeMode.LIGHT
+    val isPureAmoled = effectiveMode == ThemeMode.PURE_AMOLED
 
     val accent = if (isLight) {
         when (accentPreset) {
@@ -89,33 +95,33 @@ fun OnyxFilesTheme(
         Color.White
     }
 
-    val bg = when (themeMode) {
-        ThemeMode.PURE_AMOLED -> AmoledBlack
+    val bg = when (effectiveMode) {
+        ThemeMode.PURE_AMOLED, ThemeMode.SYSTEM -> AmoledBlack
         ThemeMode.DEEP_OBSIDIAN -> ObsidianBackground
         ThemeMode.LIGHT -> LightBackground
     }
-    val card = when (themeMode) {
-        ThemeMode.PURE_AMOLED -> AmoledSurfaceLow
+    val card = when (effectiveMode) {
+        ThemeMode.PURE_AMOLED, ThemeMode.SYSTEM -> AmoledSurfaceLow
         ThemeMode.DEEP_OBSIDIAN -> ObsidianSurfaceLow
         ThemeMode.LIGHT -> LightSurfaceLow
     }
-    val surface = when (themeMode) {
-        ThemeMode.PURE_AMOLED -> AmoledSurface
+    val surface = when (effectiveMode) {
+        ThemeMode.PURE_AMOLED, ThemeMode.SYSTEM -> AmoledSurface
         ThemeMode.DEEP_OBSIDIAN -> ObsidianSurface
         ThemeMode.LIGHT -> LightSurface
     }
-    val surfaceHigh = when (themeMode) {
-        ThemeMode.PURE_AMOLED -> AmoledSurfaceHigh
+    val surfaceHigh = when (effectiveMode) {
+        ThemeMode.PURE_AMOLED, ThemeMode.SYSTEM -> AmoledSurfaceHigh
         ThemeMode.DEEP_OBSIDIAN -> ObsidianSurfaceHigh
         ThemeMode.LIGHT -> LightSurfaceHigh
     }
-    val outline = when (themeMode) {
-        ThemeMode.PURE_AMOLED -> AmoledOutline
+    val outline = when (effectiveMode) {
+        ThemeMode.PURE_AMOLED, ThemeMode.SYSTEM -> AmoledOutline
         ThemeMode.DEEP_OBSIDIAN -> ObsidianOutline
         ThemeMode.LIGHT -> LightOutline
     }
-    val outlineSubtle = when (themeMode) {
-        ThemeMode.PURE_AMOLED -> AmoledOutlineSubtle
+    val outlineSubtle = when (effectiveMode) {
+        ThemeMode.PURE_AMOLED, ThemeMode.SYSTEM -> AmoledOutlineSubtle
         ThemeMode.DEEP_OBSIDIAN -> ObsidianOutline.copy(alpha = 0.5f)
         ThemeMode.LIGHT -> LightOutlineSubtle
     }

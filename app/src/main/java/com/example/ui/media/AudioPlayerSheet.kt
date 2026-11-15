@@ -26,15 +26,19 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,11 +54,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,8 +82,11 @@ fun AudioPlayerSheet(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
+    onSeekBy: (Long) -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
+    onCycleSpeed: () -> Unit,
+    onCycleSleepTimer: () -> Unit,
     onSelectQueueIndex: (Int) -> Unit
 ) {
     val onyx = LocalOnyxColors.current
@@ -116,40 +127,55 @@ fun AudioPlayerSheet(
                 Text(
                     text = "NOW PLAYING",
                     style = MaterialTheme.typography.labelMedium,
-                    color = onyx.textSecondary
+                    color = onyx.accent
                 )
                 Spacer(modifier = Modifier.size(48.dp))
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Album Art
+            // Glowing Album Art
             Box(
                 modifier = Modifier
-                    .size(220.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(onyx.cardSurface)
-                    .border(1.dp, onyx.hairlineBorder, RoundedCornerShape(28.dp)),
+                    .size(236.dp)
+                    .drawBehind {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(onyx.accentGlow.copy(alpha = 0.55f), Color.Transparent),
+                                radius = size.width * 0.68f
+                            ),
+                            radius = size.width * 0.68f
+                        )
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                if (artBitmap != null) {
-                    Image(
-                        bitmap = artBitmap,
-                        contentDescription = track.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.matchParentSize()
-                    )
-                } else {
-                    Image(
-                        painter = painterResource(id = R.drawable.img_audio_artwork),
-                        contentDescription = track.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.matchParentSize()
-                    )
+                Box(
+                    modifier = Modifier
+                        .size(214.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(onyx.cardSurface)
+                        .border(1.2.dp, onyx.glowBorder, RoundedCornerShape(28.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (artBitmap != null) {
+                        Image(
+                            bitmap = artBitmap,
+                            contentDescription = track.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.matchParentSize()
+                        )
+                    } else {
+                        Image(
+                            painter = painterResource(id = R.drawable.img_audio_artwork),
+                            contentDescription = track.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.matchParentSize()
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
                 text = track.title,
@@ -169,12 +195,32 @@ fun AudioPlayerSheet(
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Subtle live equalizer pulse bars
             AudioWaveIndicator(isPlaying = state.isPlaying, color = onyx.accent)
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            // Quick utility pills: Speed & Sleep Timer
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AudioUtilityChip(
+                    icon = Icons.Rounded.Speed,
+                    label = "${state.playbackSpeed}x",
+                    active = state.playbackSpeed != 1f,
+                    onClick = onCycleSpeed
+                )
+                AudioUtilityChip(
+                    icon = Icons.Rounded.Timer,
+                    label = state.sleepTimerMinutes?.let { "${it}m" } ?: "Sleep Off",
+                    active = state.sleepTimerMinutes != null,
+                    onClick = onCycleSleepTimer
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             Slider(
                 value = state.progress,
@@ -205,9 +251,9 @@ fun AudioPlayerSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Transport controls
+            // Transport controls (-10s, Prev, Play, Next, +10s)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -220,17 +266,24 @@ fun AudioPlayerSheet(
                         tint = if (state.shuffleEnabled) onyx.accent else onyx.textTertiary
                     )
                 }
-                IconButton(onClick = onPrevious, modifier = Modifier.size(52.dp)) {
+                IconButton(onClick = { onSeekBy(-10_000L) }) {
+                    Icon(
+                        imageVector = Icons.Rounded.Replay10,
+                        contentDescription = "Rewind 10s",
+                        tint = onyx.textSecondary
+                    )
+                }
+                IconButton(onClick = onPrevious, modifier = Modifier.size(48.dp)) {
                     Icon(
                         imageVector = Icons.Rounded.SkipPrevious,
                         contentDescription = "Previous",
                         tint = onyx.textPrimary,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                 }
                 Box(
                     modifier = Modifier
-                        .size(68.dp)
+                        .size(66.dp)
                         .clip(CircleShape)
                         .background(onyx.accent)
                         .clickable(onClick = onTogglePlayPause)
@@ -240,16 +293,23 @@ fun AudioPlayerSheet(
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                         contentDescription = if (state.isPlaying) "Pause" else "Play",
-                        tint = Color(0xFF05070B),
-                        modifier = Modifier.size(36.dp)
+                        tint = onyx.onAccent,
+                        modifier = Modifier.size(34.dp)
                     )
                 }
-                IconButton(onClick = onNext, modifier = Modifier.size(52.dp)) {
+                IconButton(onClick = onNext, modifier = Modifier.size(48.dp)) {
                     Icon(
                         imageVector = Icons.Rounded.SkipNext,
                         contentDescription = "Next",
                         tint = onyx.textPrimary,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                IconButton(onClick = { onSeekBy(10_000L) }) {
+                    Icon(
+                        imageVector = Icons.Rounded.Forward10,
+                        contentDescription = "Forward 10s",
+                        tint = onyx.textSecondary
                     )
                 }
                 IconButton(onClick = onCycleRepeat) {
@@ -262,7 +322,7 @@ fun AudioPlayerSheet(
             }
 
             if (state.queue.size > 1) {
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -277,7 +337,7 @@ fun AudioPlayerSheet(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(160.dp),
+                        .height(150.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     itemsIndexed(state.queue, key = { idx, t -> "${idx}_${t.id}" }) { index, qTrack ->
@@ -324,6 +384,42 @@ fun AudioPlayerSheet(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AudioUtilityChip(
+    icon: ImageVector,
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit
+) {
+    val onyx = LocalOnyxColors.current
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (active) onyx.accentSoft else onyx.cardSurface)
+            .border(
+                width = 0.85.dp,
+                color = if (active) onyx.glowBorder else onyx.subtleBorder,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (active) onyx.accent else onyx.textSecondary,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = label,
+            style = MonoMetadataStyle.copy(fontWeight = FontWeight.SemiBold),
+            color = if (active) onyx.accent else onyx.textSecondary
+        )
     }
 }
 
