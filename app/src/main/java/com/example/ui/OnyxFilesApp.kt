@@ -9,6 +9,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -25,6 +28,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -37,9 +41,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -60,6 +62,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -87,9 +92,11 @@ import com.example.ui.components.DeleteConfirmDialog
 import com.example.ui.components.FileActionBottomSheet
 import com.example.ui.components.FilePropertiesSheet
 import com.example.ui.components.MiniAudioPlayerBar
+import com.example.ui.components.OpenAsBottomSheet
 import com.example.ui.components.OperationProgressDialog
 import com.example.ui.components.SortBottomSheet
 import com.example.ui.components.TextInputDialog
+import com.example.data.model.ThemeMode
 import com.example.ui.media.AudioPlayerSheet
 import com.example.ui.media.ImageViewerScreen
 import com.example.ui.media.VideoPlayerScreen
@@ -130,7 +137,8 @@ fun OnyxFilesApp(
     viewModel: MainViewModel,
     widthSizeClass: WindowWidthSizeClass,
     maxRefreshRateHz: Int = 60,
-    onApplyRefreshRate: (Boolean) -> Unit = {}
+    onApplyRefreshRate: (Boolean) -> Unit = {},
+    onApplySystemBarTheme: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -156,6 +164,7 @@ fun OnyxFilesApp(
 
     // Modal sheets & dialogs
     var actionSheetItem by remember { mutableStateOf<FileItem?>(null) }
+    var openAsTarget by remember { mutableStateOf<FileItem?>(null) }
     var showSortSheet by remember { mutableStateOf(false) }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var showCreateFileDialog by remember { mutableStateOf(false) }
@@ -166,6 +175,11 @@ fun OnyxFilesApp(
     // Apply 120Hz / preferred display refresh rate whenever user preference changes
     LaunchedEffect(preferences.highRefreshRate) {
         onApplyRefreshRate(preferences.highRefreshRate)
+    }
+
+    // Apply Light vs Dark status/navigation bar contrast dynamically
+    LaunchedEffect(preferences.themeMode) {
+        onApplySystemBarTheme(preferences.themeMode == ThemeMode.LIGHT)
     }
 
     // Refresh permissions lightly when user returns from Android Settings
@@ -254,18 +268,30 @@ fun OnyxFilesApp(
         }
     }
 
+    val openAsMime: (FileItem, String) -> Unit = { item, mimeType ->
+        runCatching {
+            viewModel.recordFileOpened(item)
+            val intent = Intent.createChooser(viewModel.createOpenAsIntent(item, mimeType), "Open as...")
+            context.startActivity(intent)
+        }.onFailure {
+            Toast.makeText(context, "No app available to open ${item.name} as $mimeType", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val openExternal: (FileItem) -> Unit = { item ->
         runCatching {
             viewModel.recordFileOpened(item)
             context.startActivity(viewModel.createOpenExternalIntent(item))
         }.onFailure {
-            Toast.makeText(context, "No installed app can open ${item.name}", Toast.LENGTH_SHORT).show()
+            openAsTarget = item
         }
     }
 
     val handleFileOpen: (FileItem, List<FileItem>) -> Unit = { item, siblingList ->
         if (item.isDirectory) {
             viewModel.openDirectory(item.path, isSaf = item.isSafDocument)
+        } else if (item.extension.isBlank()) {
+            openAsTarget = item
         } else {
             viewModel.recordFileOpened(item)
             when (item.typeGroup) {
@@ -325,20 +351,47 @@ fun OnyxFilesApp(
                             onDismiss = { viewModel.audioController.stopAndDismiss() }
                         )
                         if (!isExpandedWidth) {
-                            HorizontalDivider(thickness = 0.75.dp, color = onyx.subtleBorder)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color.Transparent,
+                                                onyx.glowBorder,
+                                                onyx.accent.copy(alpha = 0.72f),
+                                                onyx.glowBorder,
+                                                Color.Transparent
+                                            )
+                                        )
+                                    )
+                            )
                             NavigationBar(
                                 containerColor = onyx.background,
                                 tonalElevation = 0.dp
                             ) {
                                 TopTabs.forEach { tab ->
                                     val selected = currentDest?.hasRoute(tab.route::class) == true
+                                    val iconScale by animateFloatAsState(
+                                        targetValue = if (selected) 1.15f else 1f,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessMedium
+                                        ),
+                                        label = "navIconScale"
+                                    )
                                     NavigationBarItem(
                                         selected = selected,
                                         onClick = { navigateToTab(tab.route) },
                                         icon = {
                                             Icon(
                                                 imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                                contentDescription = tab.label
+                                                contentDescription = tab.label,
+                                                modifier = Modifier.graphicsLayer {
+                                                    scaleX = iconScale
+                                                    scaleY = iconScale
+                                                }
                                             )
                                         },
                                         label = { Text(tab.label) },
@@ -371,13 +424,25 @@ fun OnyxFilesApp(
                         ) {
                             TopTabs.forEach { tab ->
                                 val selected = currentDest?.hasRoute(tab.route::class) == true
+                                val iconScale by animateFloatAsState(
+                                    targetValue = if (selected) 1.15f else 1f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessMedium
+                                    ),
+                                    label = "railIconScale"
+                                )
                                 NavigationRailItem(
                                     selected = selected,
                                     onClick = { navigateToTab(tab.route) },
                                     icon = {
                                         Icon(
                                             imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                            contentDescription = tab.label
+                                            contentDescription = tab.label,
+                                            modifier = Modifier.graphicsLayer {
+                                                scaleX = iconScale
+                                                scaleY = iconScale
+                                            }
                                         )
                                     },
                                     label = { Text(tab.label) },
@@ -392,15 +457,21 @@ fun OnyxFilesApp(
                                 )
                             }
                         }
-                        VerticalDivider(thickness = 0.75.dp, color = onyx.subtleBorder)
+                        VerticalDivider(thickness = 0.85.dp, color = onyx.glowBorder.copy(alpha = 0.45f))
                     }
 
                     NavHost(
                         navController = navController,
                         startDestination = HomeRoute,
-                        enterTransition = { fadeIn(tween(180, easing = FastOutSlowInEasing)) },
+                        enterTransition = {
+                            fadeIn(tween(190, easing = FastOutSlowInEasing)) +
+                                scaleIn(initialScale = 0.98f, animationSpec = tween(190, easing = FastOutSlowInEasing))
+                        },
                         exitTransition = { fadeOut(tween(140, easing = FastOutSlowInEasing)) },
-                        popEnterTransition = { fadeIn(tween(180, easing = FastOutSlowInEasing)) },
+                        popEnterTransition = {
+                            fadeIn(tween(190, easing = FastOutSlowInEasing)) +
+                                scaleIn(initialScale = 0.98f, animationSpec = tween(190, easing = FastOutSlowInEasing))
+                        },
                         popExitTransition = { fadeOut(tween(140, easing = FastOutSlowInEasing)) },
                         modifier = Modifier
                             .weight(1f)
@@ -487,6 +558,15 @@ fun OnyxFilesApp(
                                     actionSheetItem = item
                                 },
                                 onToggleViewMode = { viewModel.toggleViewMode() },
+                                onToggleHiddenFiles = {
+                                    val next = !preferences.showHiddenFiles
+                                    viewModel.setShowHiddenFiles(next)
+                                    Toast.makeText(
+                                        context,
+                                        if (next) "Hidden files visible" else "Hidden files hidden",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                },
                                 onOpenSortSheet = { showSortSheet = true },
                                 onToggleBookmark = { viewModel.toggleFavoriteCurrentFolder() },
                                 onRefresh = { viewModel.reloadCurrentDirectory() },
@@ -674,6 +754,7 @@ fun OnyxFilesApp(
                     item = item,
                     onOpen = { handleFileOpen(item, browserState.displayedItems) },
                     onOpenExternal = { openExternal(item) },
+                    onOpenAs = { openAsTarget = item },
                     onShare = { shareItems(listOf(item)) },
                     onCopy = { viewModel.setClipboard(ClipboardMode.COPY, listOf(item)) },
                     onCut = { viewModel.setClipboard(ClipboardMode.CUT, listOf(item)) },
@@ -683,6 +764,14 @@ fun OnyxFilesApp(
                     onProperties = { viewModel.inspectProperties(item) },
                     onDelete = { deleteTargets = listOf(item) },
                     onDismiss = { actionSheetItem = null }
+                )
+            }
+
+            openAsTarget?.let { target ->
+                OpenAsBottomSheet(
+                    item = target,
+                    onSelectMimeType = { mime -> openAsMime(target, mime) },
+                    onDismiss = { openAsTarget = null }
                 )
             }
 

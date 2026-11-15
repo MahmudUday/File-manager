@@ -643,6 +643,7 @@ class MainViewModel(
 
     fun createShareIntent(items: List<FileItem>) = fileRepo.createShareIntent(items)
     fun createOpenExternalIntent(item: FileItem) = fileRepo.createOpenExternalIntent(item)
+    fun createOpenAsIntent(item: FileItem, mimeType: String) = fileRepo.createOpenAsIntent(item, mimeType)
 
     class Factory(
         private val context: Context,

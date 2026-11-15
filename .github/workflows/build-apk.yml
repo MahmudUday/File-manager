@@ -45,9 +45,9 @@ jobs:
           KEY_PASSWORD: onyxfiles123
         run: gradle :app:assembleRelease --no-daemon
 
-      - name: Upload Onyx Files Release APK
+      - name: Upload Orion Explorer Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: OnyxFiles-Release-APK
+          name: OrionExplorer-Release-APK
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error

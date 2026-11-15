@@ -1144,9 +1144,13 @@ class FileOperationsRepository(private val context: Context) {
     }
 
     fun createOpenExternalIntent(item: FileItem): Intent {
+        return createOpenAsIntent(item, item.mimeType)
+    }
+
+    fun createOpenAsIntent(item: FileItem, mimeType: String): Intent {
         val uri = resolveContentUri(item)
         return Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, item.mimeType)
+            setDataAndType(uri, mimeType)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
     }

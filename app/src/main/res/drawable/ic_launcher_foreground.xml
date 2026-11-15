@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/onyx_launcher_fg"
+        android:drawable="@drawable/orion_launcher_fg"
         android:gravity="center" />
 </layer-list>

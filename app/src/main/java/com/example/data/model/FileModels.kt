@@ -102,7 +102,8 @@ enum class ViewMode(val label: String) {
 
 enum class ThemeMode(val label: String, val description: String) {
     PURE_AMOLED("Pure AMOLED", "True #000000 pitch-black canvas for OLED power efficiency"),
-    DEEP_OBSIDIAN("Deep Obsidian", "Subtle slate-black layers with soft ambient contrast")
+    DEEP_OBSIDIAN("Deep Obsidian", "Subtle slate-black layers with soft ambient contrast"),
+    LIGHT("Light Mode", "Crisp daylight surfaces with luminous contrast")
 }
 
 enum class AccentPreset(val label: String, val color: Color) {

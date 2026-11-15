@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,9 +34,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -47,6 +57,8 @@ import com.example.ui.theme.LocalOnyxColors
 import com.example.ui.theme.MonoMetadataStyle
 import com.example.util.FileFormatters
 
+private val FavCardShape = RoundedCornerShape(16.dp)
+
 @Composable
 fun FavoritesScreen(
     preferences: AppPreferences,
@@ -57,11 +69,30 @@ fun FavoritesScreen(
     modifier: Modifier = Modifier
 ) {
     val onyx = LocalOnyxColors.current
+    val revealProgress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        revealProgress.animateTo(1f, tween(220, easing = FastOutSlowInEasing))
+    }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .background(onyx.background)
+            .drawBehind {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(onyx.accentGlow.copy(alpha = 0.20f), Color.Transparent),
+                        center = Offset(size.width * 0.85f, 40f),
+                        radius = size.width * 0.68f
+                    ),
+                    center = Offset(size.width * 0.85f, 40f),
+                    radius = size.width * 0.68f
+                )
+            }
+            .graphicsLayer {
+                alpha = revealProgress.value
+                translationY = (1f - revealProgress.value) * 14f
+            }
             .testTag("favorites_screen"),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -128,10 +159,11 @@ fun FavoritesScreen(
             items(preferences.favorites, key = { it.path }) { fav ->
                 Row(
                     modifier = Modifier
+                        .animateItem()
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(FavCardShape)
                         .background(onyx.cardSurface)
-                        .border(0.8.dp, onyx.subtleBorder, RoundedCornerShape(16.dp))
+                        .border(0.85.dp, onyx.glowBorder.copy(alpha = 0.45f), FavCardShape)
                         .clickable { onOpenFavorite(fav) }
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -140,7 +172,8 @@ fun FavoritesScreen(
                         modifier = Modifier
                             .size(42.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(onyx.accentSoft),
+                            .background(onyx.accentSoft)
+                            .border(0.7.dp, onyx.glowBorder.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -217,13 +250,13 @@ fun FavoritesScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(FavCardShape)
                         .background(onyx.cardSurface)
-                        .border(0.8.dp, onyx.subtleBorder, RoundedCornerShape(16.dp))
+                        .border(0.8.dp, onyx.subtleBorder, FavCardShape)
                         .padding(18.dp)
                 ) {
                     Text(
-                        text = "Files you open in Onyx Files will appear here.",
+                        text = "Files you open in Orion Explorer will appear here.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = onyx.textSecondary
                     )
@@ -233,10 +266,11 @@ fun FavoritesScreen(
             items(preferences.recentFiles, key = { "${it.path}_${it.openedAt}" }) { recent ->
                 Row(
                     modifier = Modifier
+                        .animateItem()
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(FavCardShape)
                         .background(onyx.cardSurface)
-                        .border(0.8.dp, onyx.subtleBorder, RoundedCornerShape(16.dp))
+                        .border(0.8.dp, onyx.subtleBorder, FavCardShape)
                         .clickable { onOpenRecent(recent) }
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -251,7 +285,7 @@ fun FavoritesScreen(
                         Icon(
                             imageVector = Icons.Rounded.InsertDriveFile,
                             contentDescription = null,
-                            tint = onyx.textSecondary,
+                            tint = onyx.accent.copy(alpha = 0.85f),
                             modifier = Modifier.size(20.dp)
                         )
                     }

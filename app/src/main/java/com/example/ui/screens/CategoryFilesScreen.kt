@@ -215,7 +215,8 @@ fun CategoryFilesScreen(
                                             showExtension = preferences.showFileExtensions,
                                             onClick = { onItemClick(item) },
                                             onLongClick = { onItemLongClick(item) },
-                                            onMoreClick = { onItemMoreClick(item) }
+                                            onMoreClick = { onItemMoreClick(item) },
+                                            modifier = Modifier.animateItem()
                                         )
                                     }
                                 }
@@ -235,7 +236,8 @@ fun CategoryFilesScreen(
                                             showExtension = preferences.showFileExtensions,
                                             onClick = { onItemClick(item) },
                                             onLongClick = { onItemLongClick(item) },
-                                            onMoreClick = { onItemMoreClick(item) }
+                                            onMoreClick = { onItemMoreClick(item) },
+                                            modifier = Modifier.animateItem()
                                         )
                                     }
                                 }
@@ -259,7 +261,7 @@ fun CategoryFilesScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
                     .background(onyx.elevatedSurface)
-                    .border(1.dp, onyx.hairlineBorder, RoundedCornerShape(20.dp))
+                    .border(1.dp, onyx.glowBorder, RoundedCornerShape(20.dp))
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {

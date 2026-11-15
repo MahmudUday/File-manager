@@ -50,9 +50,10 @@ fun FileListSkeleton(
     val brush = Brush.linearGradient(
         colors = listOf(
             onyx.elevatedSurface,
-            onyx.elevatedSurface.copy(alpha = 0.45f),
+            onyx.elevatedSurface.copy(alpha = 0.55f),
+            onyx.accent.copy(alpha = 0.14f),
             Color.White.copy(alpha = 0.08f),
-            onyx.elevatedSurface.copy(alpha = 0.45f),
+            onyx.elevatedSurface.copy(alpha = 0.55f),
             onyx.elevatedSurface
         ),
         start = Offset(translate, 0f),

@@ -4,12 +4,15 @@ import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
@@ -42,6 +45,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -53,6 +60,8 @@ import com.example.R
 import com.example.media.AudioPlaybackState
 import com.example.ui.theme.LocalOnyxColors
 import com.example.ui.theme.MonoMetadataStyle
+
+private val MiniPlayerShape = RoundedCornerShape(18.dp)
 
 @Composable
 fun MiniAudioPlayerBar(
@@ -68,8 +77,11 @@ fun MiniAudioPlayerBar(
 
     AnimatedVisibility(
         visible = track != null,
-        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        enter = slideInVertically(
+            initialOffsetY = { it },
+            animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
+        ) + scaleIn(initialScale = 0.94f) + fadeIn(tween(180)),
+        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(tween(140)),
         modifier = modifier
     ) {
         if (track != null) {
@@ -93,9 +105,26 @@ fun MiniAudioPlayerBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 6.dp)
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(MiniPlayerShape)
                     .background(onyx.elevatedSurface)
-                    .border(1.dp, onyx.hairlineBorder, RoundedCornerShape(18.dp))
+                    .drawBehind {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(onyx.accentGlow.copy(alpha = 0.32f), Color.Transparent),
+                                center = Offset(size.width * 0.12f, size.height * 0.5f),
+                                radius = size.width * 0.45f
+                            ),
+                            center = Offset(size.width * 0.12f, size.height * 0.5f),
+                            radius = size.width * 0.45f
+                        )
+                    }
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(onyx.glowBorder, onyx.hairlineBorder, onyx.glowBorder)
+                        ),
+                        shape = MiniPlayerShape
+                    )
                     .clickable(onClick = onExpand)
                     .testTag("mini_audio_player")
             ) {
@@ -112,7 +141,7 @@ fun MiniAudioPlayerBar(
                                 rotationZ = if (state.isPlaying) rotation else 0f
                             }
                             .clip(CircleShape)
-                            .border(1.dp, onyx.accent.copy(alpha = 0.45f), CircleShape)
+                            .border(1.2.dp, onyx.glowBorder, CircleShape)
                     ) {
                         if (artBitmap != null) {
                             Image(
@@ -185,18 +214,22 @@ fun MiniAudioPlayerBar(
                     }
                 }
 
-                // Hairline progress bar
+                // Glowing hairline progress bar
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(2.5.dp)
+                        .height(3.dp)
                         .background(onyx.hairlineBorder)
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(state.progress)
-                            .height(2.5.dp)
-                            .background(onyx.accent)
+                            .height(3.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(onyx.accent.copy(alpha = 0.65f), onyx.accent)
+                                )
+                            )
                     )
                 }
             }

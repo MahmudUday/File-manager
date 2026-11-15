@@ -2,9 +2,12 @@ package com.example.ui.components
 
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -45,11 +48,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -78,6 +83,11 @@ import com.example.ui.theme.TypeImageColor
 import com.example.ui.theme.TypeVideoColor
 import com.example.util.FileFormatters
 import java.io.File
+
+private val ListRowShape = RoundedCornerShape(16.dp)
+private val GridCardShape = RoundedCornerShape(18.dp)
+private val ThumbDefaultShape = RoundedCornerShape(13.dp)
+private val ThumbGridShape = RoundedCornerShape(15.dp)
 
 @Composable
 fun fileTypeColor(typeGroup: FileTypeGroup, accent: Color): Color {
@@ -118,20 +128,35 @@ fun FileThumbnail(
     val onyx = LocalOnyxColors.current
     val tint = fileTypeColor(item.typeGroup, onyx.accent)
     val context = LocalContext.current
+    val shape = remember(cornerRadius) {
+        when (cornerRadius) {
+            13.dp -> ThumbDefaultShape
+            15.dp -> ThumbGridShape
+            else -> RoundedCornerShape(cornerRadius)
+        }
+    }
 
     val showThumbnail = item.typeGroup == FileTypeGroup.IMAGE || item.typeGroup == FileTypeGroup.VIDEO
 
     Box(
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(cornerRadius))
+            .clip(shape)
             .background(
-                if (item.isDirectory) tint.copy(alpha = 0.13f) else onyx.elevatedSurface
+                if (item.isDirectory) {
+                    Brush.radialGradient(
+                        colors = listOf(tint.copy(alpha = 0.24f), tint.copy(alpha = 0.10f))
+                    )
+                } else {
+                    Brush.radialGradient(
+                        colors = listOf(tint.copy(alpha = 0.14f), onyx.elevatedSurface)
+                    )
+                }
             )
             .border(
-                width = 0.75.dp,
-                color = if (item.isDirectory) tint.copy(alpha = 0.25f) else onyx.subtleBorder,
-                shape = RoundedCornerShape(cornerRadius)
+                width = 0.85.dp,
+                color = if (item.isDirectory) tint.copy(alpha = 0.42f) else tint.copy(alpha = 0.24f),
+                shape = shape
             ),
         contentAlignment = Alignment.Center
     ) {
@@ -161,7 +186,8 @@ fun FileThumbnail(
                     modifier = Modifier
                         .size(22.dp)
                         .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.65f)),
+                        .background(Color.Black.copy(alpha = 0.68f))
+                        .border(0.7.dp, tint.copy(alpha = 0.6f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -197,13 +223,22 @@ fun FileListRow(
     val onyx = LocalOnyxColors.current
     val haptic = LocalHapticFeedback.current
 
-    val scale by animateFloatAsState(
+    // Lightweight GPU-only scroll entrance micro-animation
+    val appearProgress = remember(item.id) { Animatable(0f) }
+    LaunchedEffect(item.id) {
+        appearProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 145, easing = FastOutSlowInEasing)
+        )
+    }
+
+    val selectScale by animateFloatAsState(
         targetValue = if (isSelected) 0.98f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "rowScale"
     )
     val bgColor = if (isSelected) onyx.accentSoft else onyx.cardSurface
-    val borderColor = if (isSelected) onyx.accent.copy(alpha = 0.72f) else onyx.subtleBorder
+    val borderColor = if (isSelected) onyx.accent.copy(alpha = 0.80f) else onyx.subtleBorder
 
     val displayName = if (showExtension) item.name else item.displayNameWithoutExtension
     val metaText = remember(item.id, item.formattedSize, item.formattedDate) {
@@ -220,15 +255,16 @@ fun FileListRow(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
-                if (scale != 1f) {
-                    scaleX = scale
-                    scaleY = scale
-                }
-                if (item.isHidden) alpha = 0.68f
+                val p = appearProgress.value
+                val combinedScale = selectScale * (0.965f + 0.035f * p)
+                scaleX = combinedScale
+                scaleY = combinedScale
+                translationY = (1f - p) * 14f
+                alpha = (0.78f + 0.22f * p) * (if (item.isHidden) 0.68f else 1f)
             }
-            .clip(RoundedCornerShape(16.dp))
+            .clip(ListRowShape)
             .background(bgColor)
-            .border(width = 0.8.dp, color = borderColor, shape = RoundedCornerShape(16.dp))
+            .border(width = if (isSelected) 1.dp else 0.8.dp, color = borderColor, shape = ListRowShape)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = {
@@ -309,13 +345,21 @@ fun FileGridCard(
     val onyx = LocalOnyxColors.current
     val haptic = LocalHapticFeedback.current
 
-    val scale by animateFloatAsState(
+    val appearProgress = remember(item.id) { Animatable(0f) }
+    LaunchedEffect(item.id) {
+        appearProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 155, easing = FastOutSlowInEasing)
+        )
+    }
+
+    val selectScale by animateFloatAsState(
         targetValue = if (isSelected) 0.95f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "gridScale"
     )
     val bgColor = if (isSelected) onyx.accentSoft else onyx.cardSurface
-    val borderColor = if (isSelected) onyx.accent.copy(alpha = 0.75f) else onyx.subtleBorder
+    val borderColor = if (isSelected) onyx.accent.copy(alpha = 0.80f) else onyx.subtleBorder
 
     val displayName = if (showExtension) item.name else item.displayNameWithoutExtension
     val metaText = item.formattedSize.ifEmpty {
@@ -326,15 +370,16 @@ fun FileGridCard(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
-                if (scale != 1f) {
-                    scaleX = scale
-                    scaleY = scale
-                }
-                if (item.isHidden) alpha = 0.68f
+                val p = appearProgress.value
+                val combinedScale = selectScale * (0.955f + 0.045f * p)
+                scaleX = combinedScale
+                scaleY = combinedScale
+                translationY = (1f - p) * 16f
+                alpha = (0.78f + 0.22f * p) * (if (item.isHidden) 0.68f else 1f)
             }
-            .clip(RoundedCornerShape(18.dp))
+            .clip(GridCardShape)
             .background(bgColor)
-            .border(width = 0.8.dp, color = borderColor, shape = RoundedCornerShape(18.dp))
+            .border(width = if (isSelected) 1.dp else 0.8.dp, color = borderColor, shape = GridCardShape)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = {

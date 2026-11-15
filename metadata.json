@@ -1,6 +1,6 @@
 {
-  "name": "Onyx Files",
-  "description": "Pure AMOLED dark Android file manager with ultra-smooth animations, ZIP compression/extraction, and built-in image, video, and audio players.",
+  "name": "Orion Explorer",
+  "description": "Pure AMOLED & Light-mode Android file explorer with ultra-smooth animations, ZIP compression/extraction, Open-As support, and built-in media players.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

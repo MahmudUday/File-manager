@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Onyx Files"
+rootProject.name = "Orion Explorer"
 
 include(":app")

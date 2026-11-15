@@ -44,7 +44,15 @@ class MainActivity : ComponentActivity() {
                 viewModel = viewModel,
                 widthSizeClass = windowSizeClass.widthSizeClass,
                 maxRefreshRateHz = maxHz,
-                onApplyRefreshRate = { enabled -> applyPreferredRefreshRate(enabled) }
+                onApplyRefreshRate = { enabled -> applyPreferredRefreshRate(enabled) },
+                onApplySystemBarTheme = { isLight ->
+                    val style = if (isLight) {
+                        SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.dark(Color.TRANSPARENT)
+                    }
+                    enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                }
             )
         }
     }
