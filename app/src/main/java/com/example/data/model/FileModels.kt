@@ -47,7 +47,9 @@ data class FileItem(
     val isHidden: Boolean,
     val childCount: Int = 0,
     val isSafDocument: Boolean = false,
-    val typeGroup: FileTypeGroup = FileTypeGroup.OTHER
+    val typeGroup: FileTypeGroup = FileTypeGroup.OTHER,
+    val formattedSize: String = "",
+    val formattedDate: String = ""
 ) {
     val displayNameWithoutExtension: String
         get() = if (isDirectory || extension.isEmpty() || !name.contains('.')) {
@@ -140,6 +142,7 @@ data class AppPreferences(
     val sortDirection: SortDirection = SortDirection.ASCENDING,
     val showHiddenFiles: Boolean = false,
     val showFileExtensions: Boolean = true,
+    val highRefreshRate: Boolean = true,
     val favorites: List<FavoriteFolder> = emptyList(),
     val recentFiles: List<RecentFileEntry> = emptyList(),
     val safTreeUris: List<String> = emptyList()

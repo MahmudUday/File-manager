@@ -2,7 +2,6 @@ package com.example.ui.components
 
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -14,7 +13,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,7 +28,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Android
-import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Code
@@ -66,6 +63,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.size.Precision
 import com.example.data.model.FileItem
 import com.example.data.model.FileTypeGroup
 import com.example.ui.theme.LocalOnyxColors
@@ -138,18 +136,18 @@ fun FileThumbnail(
         contentAlignment = Alignment.Center
     ) {
         if (showThumbnail) {
-            val dataModel = remember(item.id, item.uriString) {
-                if (item.uriString.startsWith("content://")) {
+            val request = remember(item.id, item.uriString) {
+                val dataModel = if (item.uriString.startsWith("content://")) {
                     Uri.parse(item.uriString)
                 } else {
                     File(item.path)
                 }
-            }
-            val request = remember(dataModel, size) {
                 ImageRequest.Builder(context)
                     .data(dataModel)
-                    .size(220)
-                    .crossfade(true)
+                    .size(160, 160)
+                    .precision(Precision.INEXACT)
+                    .crossfade(false)
+                    .memoryCacheKey("thumb_${item.id}_${item.lastModified}")
                     .build()
             }
             AsyncImage(
@@ -201,35 +199,32 @@ fun FileListRow(
 
     val scale by animateFloatAsState(
         targetValue = if (isSelected) 0.98f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "rowScale"
     )
-    val bgColor by animateColorAsState(
-        targetValue = if (isSelected) onyx.accentSoft else onyx.cardSurface,
-        label = "rowBg"
-    )
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected) onyx.accent.copy(alpha = 0.7f) else onyx.subtleBorder,
-        label = "rowBorder"
-    )
+    val bgColor = if (isSelected) onyx.accentSoft else onyx.cardSurface
+    val borderColor = if (isSelected) onyx.accent.copy(alpha = 0.72f) else onyx.subtleBorder
 
     val displayName = if (showExtension) item.name else item.displayNameWithoutExtension
-    val metaText = remember(item.isDirectory, item.childCount, item.size, item.lastModified) {
-        if (item.isDirectory) {
-            val countStr = if (item.childCount == 1) "1 item" else "${item.childCount} items"
-            "$countStr  •  ${FileFormatters.formatDateSmart(item.lastModified)}"
-        } else {
-            "${FileFormatters.formatFileSize(item.size)}  •  ${FileFormatters.formatDateSmart(item.lastModified)}"
+    val metaText = remember(item.id, item.formattedSize, item.formattedDate) {
+        val sizePart = item.formattedSize.ifEmpty {
+            if (item.isDirectory) "Folder" else FileFormatters.formatFileSize(item.size)
         }
+        val datePart = item.formattedDate.ifEmpty {
+            FileFormatters.formatDateSmart(item.lastModified)
+        }
+        "$sizePart  •  $datePart"
     }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                alpha = if (item.isHidden) 0.68f else 1f
+                if (scale != 1f) {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                if (item.isHidden) alpha = 0.68f
             }
             .clip(RoundedCornerShape(16.dp))
             .background(bgColor)
@@ -316,30 +311,26 @@ fun FileGridCard(
 
     val scale by animateFloatAsState(
         targetValue = if (isSelected) 0.95f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "gridScale"
     )
-    val bgColor by animateColorAsState(
-        targetValue = if (isSelected) onyx.accentSoft else onyx.cardSurface,
-        label = "gridBg"
-    )
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected) onyx.accent.copy(alpha = 0.75f) else onyx.subtleBorder,
-        label = "gridBorder"
-    )
+    val bgColor = if (isSelected) onyx.accentSoft else onyx.cardSurface
+    val borderColor = if (isSelected) onyx.accent.copy(alpha = 0.75f) else onyx.subtleBorder
 
     val displayName = if (showExtension) item.name else item.displayNameWithoutExtension
-    val metaText = remember(item.isDirectory, item.childCount, item.size) {
-        if (item.isDirectory) "${item.childCount} items" else FileFormatters.formatFileSize(item.size)
+    val metaText = item.formattedSize.ifEmpty {
+        if (item.isDirectory) "Folder" else FileFormatters.formatFileSize(item.size)
     }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                alpha = if (item.isHidden) 0.68f else 1f
+                if (scale != 1f) {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                if (item.isHidden) alpha = 0.68f
             }
             .clip(RoundedCornerShape(18.dp))
             .background(bgColor)

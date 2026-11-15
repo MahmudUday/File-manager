@@ -24,26 +24,30 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
-      - name: Generate debug keystore if missing
+      - name: Generate release signing keystore if missing
         run: |
-          if [ ! -f debug.keystore ]; then
+          if [ ! -f my-upload-key.jks ]; then
             keytool -genkeypair -v \
-              -keystore debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
+              -keystore my-upload-key.jks \
+              -storepass onyxfiles123 \
+              -alias upload \
+              -keypass onyxfiles123 \
               -keyalg RSA \
               -keysize 2048 \
               -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
+              -dname "CN=OnyxFiles,O=Onyx,C=US"
           fi
 
-      - name: Build Debug APK
-        run: gradle :app:assembleDebug --no-daemon
+      - name: Build Optimized Release APK
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: onyxfiles123
+          KEY_PASSWORD: onyxfiles123
+        run: gradle :app:assembleRelease --no-daemon
 
-      - name: Upload Onyx Files APK
+      - name: Upload Onyx Files Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: OnyxFiles-Debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: OnyxFiles-Release-APK
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error

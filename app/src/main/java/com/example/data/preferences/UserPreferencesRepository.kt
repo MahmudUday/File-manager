@@ -39,6 +39,7 @@ class UserPreferencesRepository(private val context: Context) {
         val SORT_DIRECTION = stringPreferencesKey("sort_direction")
         val SHOW_HIDDEN = booleanPreferencesKey("show_hidden")
         val SHOW_EXTENSIONS = booleanPreferencesKey("show_extensions")
+        val HIGH_REFRESH_RATE = booleanPreferencesKey("high_refresh_rate")
         val FAVORITES_JSON = stringPreferencesKey("favorites_json")
         val RECENTS_JSON = stringPreferencesKey("recents_json")
         val SAF_URIS = stringSetPreferencesKey("saf_uris")
@@ -72,6 +73,7 @@ class UserPreferencesRepository(private val context: Context) {
             sortDirection = sortDirection,
             showHiddenFiles = prefs[Keys.SHOW_HIDDEN] ?: false,
             showFileExtensions = prefs[Keys.SHOW_EXTENSIONS] ?: true,
+            highRefreshRate = prefs[Keys.HIGH_REFRESH_RATE] ?: true,
             favorites = favorites,
             recentFiles = recents,
             safTreeUris = prefs[Keys.SAF_URIS]?.toList() ?: emptyList()
@@ -103,6 +105,10 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun setShowFileExtensions(show: Boolean) {
         context.dataStore.edit { it[Keys.SHOW_EXTENSIONS] = show }
+    }
+
+    suspend fun setHighRefreshRate(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.HIGH_REFRESH_RATE] = enabled }
     }
 
     suspend fun toggleFavorite(folder: FavoriteFolder) {

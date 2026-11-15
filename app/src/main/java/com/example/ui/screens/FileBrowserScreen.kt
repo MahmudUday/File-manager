@@ -3,10 +3,17 @@ package com.example.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
@@ -77,6 +84,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -362,97 +370,127 @@ fun FileBrowserScreen(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Directory Content Area
+            // Directory Content Area with directional folder drill-down motion
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                val displayed = browserState.displayedItems
-                when {
-                    browserState.isLoading && displayed.isEmpty() -> {
-                        FileListSkeleton(
-                            itemCount = 8,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                        )
-                    }
+                AnimatedContent(
+                    targetState = browserState.currentPath to browserState.breadcrumbs.size,
+                    transitionSpec = {
+                        val forward = targetState.second >= initialState.second
+                        if (targetState.first == initialState.first) {
+                            fadeIn(tween(150)) togetherWith fadeOut(tween(120))
+                        } else if (forward) {
+                            (slideInHorizontally(tween(240, easing = FastOutSlowInEasing)) { it / 5 } +
+                                fadeIn(tween(200)) +
+                                scaleIn(initialScale = 0.97f, animationSpec = tween(240, easing = FastOutSlowInEasing)))
+                                .togetherWith(
+                                    slideOutHorizontally(tween(200, easing = FastOutSlowInEasing)) { -it / 6 } +
+                                        fadeOut(tween(160))
+                                )
+                        } else {
+                            (slideInHorizontally(tween(240, easing = FastOutSlowInEasing)) { -it / 5 } +
+                                fadeIn(tween(200)) +
+                                scaleIn(initialScale = 0.97f, animationSpec = tween(240, easing = FastOutSlowInEasing)))
+                                .togetherWith(
+                                    slideOutHorizontally(tween(200, easing = FastOutSlowInEasing)) { it / 6 } +
+                                        fadeOut(tween(160))
+                                )
+                        }
+                    },
+                    label = "folderNavigationTransition",
+                    modifier = Modifier.fillMaxSize()
+                ) { _ ->
+                    val displayed = browserState.displayedItems
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        when {
+                            browserState.isLoading && displayed.isEmpty() -> {
+                                FileListSkeleton(
+                                    itemCount = 8,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
 
-                    browserState.errorMessage != null -> {
-                        EmptyBrowserState(
-                            imageRes = R.drawable.img_empty_folder,
-                            title = "Folder Unavailable",
-                            subtitle = browserState.errorMessage,
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
+                            browserState.errorMessage != null -> {
+                                EmptyBrowserState(
+                                    imageRes = R.drawable.img_empty_folder,
+                                    title = "Folder Unavailable",
+                                    subtitle = browserState.errorMessage,
+                                    modifier = Modifier.align(Alignment.Center)
+                                )
+                            }
 
-                    displayed.isEmpty() -> {
-                        val isSearch = browserState.isSearchActive && browserState.searchQuery.isNotBlank()
-                        EmptyBrowserState(
-                            imageRes = if (isSearch) R.drawable.img_empty_search else R.drawable.img_empty_folder,
-                            title = if (isSearch) "No Matching Files" else "This Folder Is Empty",
-                            subtitle = if (isSearch) "Try a different keyword or toggle deep recursive scan." else "Tap + below to create a new folder or file.",
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
+                            displayed.isEmpty() -> {
+                                val isSearch = browserState.isSearchActive && browserState.searchQuery.isNotBlank()
+                                EmptyBrowserState(
+                                    imageRes = if (isSearch) R.drawable.img_empty_search else R.drawable.img_empty_folder,
+                                    title = if (isSearch) "No Matching Files" else "This Folder Is Empty",
+                                    subtitle = if (isSearch) "Try a different keyword or toggle deep recursive scan." else "Tap + below to create a new folder or file.",
+                                    modifier = Modifier.align(Alignment.Center)
+                                )
+                            }
 
-                    else -> {
-                        AnimatedContent(
-                            targetState = preferences.viewMode,
-                            transitionSpec = {
-                                fadeIn(tween(180)) togetherWith fadeOut(tween(150))
-                            },
-                            label = "viewModeSwitch"
-                        ) { viewMode ->
-                            if (viewMode == ViewMode.LIST) {
-                                LazyColumn(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(
-                                        start = 14.dp,
-                                        end = 14.dp,
-                                        top = 6.dp,
-                                        bottom = 110.dp
-                                    ),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    items(
-                                        items = displayed,
-                                        key = { it.id },
-                                        contentType = { it.isDirectory }
-                                    ) { item ->
-                                        FileListRow(
-                                            item = item,
-                                            isSelected = item.id in browserState.selectedIds,
-                                            showExtension = preferences.showFileExtensions,
-                                            onClick = { onItemClick(item) },
-                                            onLongClick = { onItemLongClick(item) },
-                                            onMoreClick = { onItemMoreClick(item) }
-                                        )
-                                    }
-                                }
-                            } else {
-                                val gridColumns = if (isExpandedWidth) 4 else 2
-                                LazyVerticalGrid(
-                                    columns = GridCells.Fixed(gridColumns),
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(
-                                        start = 14.dp,
-                                        end = 14.dp,
-                                        top = 6.dp,
-                                        bottom = 110.dp
-                                    ),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    items(
-                                        items = displayed,
-                                        key = { it.id },
-                                        contentType = { it.isDirectory }
-                                    ) { item ->
-                                        FileGridCard(
-                                            item = item,
-                                            isSelected = item.id in browserState.selectedIds,
-                                            showExtension = preferences.showFileExtensions,
-                                            onClick = { onItemClick(item) },
-                                            onLongClick = { onItemLongClick(item) },
-                                            onMoreClick = { onItemMoreClick(item) }
-                                        )
+                            else -> {
+                                AnimatedContent(
+                                    targetState = preferences.viewMode,
+                                    transitionSpec = {
+                                        fadeIn(tween(180)) togetherWith fadeOut(tween(140))
+                                    },
+                                    label = "viewModeSwitch"
+                                ) { viewMode ->
+                                    if (viewMode == ViewMode.LIST) {
+                                        LazyColumn(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentPadding = PaddingValues(
+                                                start = 14.dp,
+                                                end = 14.dp,
+                                                top = 6.dp,
+                                                bottom = 110.dp
+                                            ),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            items(
+                                                items = displayed,
+                                                key = { it.id },
+                                                contentType = { it.isDirectory }
+                                            ) { item ->
+                                                FileListRow(
+                                                    item = item,
+                                                    isSelected = item.id in browserState.selectedIds,
+                                                    showExtension = preferences.showFileExtensions,
+                                                    onClick = { onItemClick(item) },
+                                                    onLongClick = { onItemLongClick(item) },
+                                                    onMoreClick = { onItemMoreClick(item) }
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        val gridColumns = if (isExpandedWidth) 4 else 2
+                                        LazyVerticalGrid(
+                                            columns = GridCells.Fixed(gridColumns),
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentPadding = PaddingValues(
+                                                start = 14.dp,
+                                                end = 14.dp,
+                                                top = 6.dp,
+                                                bottom = 110.dp
+                                            ),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            items(
+                                                items = displayed,
+                                                key = { it.id },
+                                                contentType = { it.isDirectory }
+                                            ) { item ->
+                                                FileGridCard(
+                                                    item = item,
+                                                    isSelected = item.id in browserState.selectedIds,
+                                                    showExtension = preferences.showFileExtensions,
+                                                    onClick = { onItemClick(item) },
+                                                    onLongClick = { onItemLongClick(item) },
+                                                    onMoreClick = { onItemMoreClick(item) }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -462,21 +500,30 @@ fun FileBrowserScreen(
             }
         }
 
-        // Create Folder / File FAB
+        // Create Folder / File FAB with spring rotation
         if (!browserState.isSelectionMode) {
+            val fabRotation by animateFloatAsState(
+                targetValue = if (showCreateMenu) 45f else 0f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                label = "fabRotate"
+            )
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 18.dp, bottom = 18.dp)
             ) {
                 FloatingActionButton(
-                    onClick = { showCreateMenu = true },
+                    onClick = { showCreateMenu = !showCreateMenu },
                     containerColor = onyx.accent,
                     contentColor = Color(0xFF05070B),
                     shape = CircleShape,
                     modifier = Modifier.testTag("create_fab")
                 ) {
-                    Icon(Icons.Rounded.Add, contentDescription = "Create new")
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = "Create new",
+                        modifier = Modifier.graphicsLayer { rotationZ = fabRotation }
+                    )
                 }
 
                 DropdownMenu(

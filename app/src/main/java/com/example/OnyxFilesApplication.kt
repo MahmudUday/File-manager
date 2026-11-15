@@ -12,6 +12,8 @@ import coil.memory.MemoryCache
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.FileOperationsRepository
 import com.example.media.AudioPlayerController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 class OnyxFilesApplication : Application(), ImageLoaderFactory {
 
@@ -31,7 +33,9 @@ class OnyxFilesApplication : Application(), ImageLoaderFactory {
         audioPlayerController = AudioPlayerController(this)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun newImageLoader(): ImageLoader {
+        val limitedIo = Dispatchers.IO.limitedParallelism(3)
         return ImageLoader.Builder(this)
             .components {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -41,6 +45,8 @@ class OnyxFilesApplication : Application(), ImageLoaderFactory {
                 }
                 add(VideoFrameDecoder.Factory())
             }
+            .fetcherDispatcher(limitedIo)
+            .decoderDispatcher(Dispatchers.IO.limitedParallelism(2))
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(0.25)
@@ -52,7 +58,7 @@ class OnyxFilesApplication : Application(), ImageLoaderFactory {
                     .maxSizeBytes(150L * 1024L * 1024L)
                     .build()
             }
-            .crossfade(180)
+            .crossfade(false)
             .build()
     }
 }

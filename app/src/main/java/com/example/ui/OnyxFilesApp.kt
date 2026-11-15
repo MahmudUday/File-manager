@@ -8,10 +8,14 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -124,7 +128,9 @@ private val TopTabs = listOf(
 @Composable
 fun OnyxFilesApp(
     viewModel: MainViewModel,
-    widthSizeClass: WindowWidthSizeClass
+    widthSizeClass: WindowWidthSizeClass,
+    maxRefreshRateHz: Int = 60,
+    onApplyRefreshRate: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -157,12 +163,17 @@ fun OnyxFilesApp(
     var deleteTargets by remember { mutableStateOf<List<FileItem>?>(null) }
     var zipTargets by remember { mutableStateOf<List<FileItem>?>(null) }
 
-    // Refresh permissions when user returns from Android Settings
+    // Apply 120Hz / preferred display refresh rate whenever user preference changes
+    LaunchedEffect(preferences.highRefreshRate) {
+        onApplyRefreshRate(preferences.highRefreshRate)
+    }
+
+    // Refresh permissions lightly when user returns from Android Settings
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.refreshPermissionsAndDashboard()
-                viewModel.reloadCurrentDirectory()
+                onApplyRefreshRate(preferences.highRefreshRate)
+                viewModel.refreshOnResume()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -387,10 +398,10 @@ fun OnyxFilesApp(
                     NavHost(
                         navController = navController,
                         startDestination = HomeRoute,
-                        enterTransition = { fadeIn(tween(200)) },
-                        exitTransition = { fadeOut(tween(160)) },
-                        popEnterTransition = { fadeIn(tween(200)) },
-                        popExitTransition = { fadeOut(tween(160)) },
+                        enterTransition = { fadeIn(tween(180, easing = FastOutSlowInEasing)) },
+                        exitTransition = { fadeOut(tween(140, easing = FastOutSlowInEasing)) },
+                        popEnterTransition = { fadeIn(tween(180, easing = FastOutSlowInEasing)) },
+                        popExitTransition = { fadeOut(tween(140, easing = FastOutSlowInEasing)) },
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxSize()
@@ -496,7 +507,23 @@ fun OnyxFilesApp(
                             )
                         }
 
-                        composable<CategoryRoute> { backStackEntry ->
+                        composable<CategoryRoute>(
+                            enterTransition = {
+                                slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { it / 4 } +
+                                    fadeIn(tween(220)) +
+                                    scaleIn(initialScale = 0.97f, animationSpec = tween(260, easing = FastOutSlowInEasing))
+                            },
+                            exitTransition = {
+                                fadeOut(tween(160))
+                            },
+                            popEnterTransition = {
+                                fadeIn(tween(180))
+                            },
+                            popExitTransition = {
+                                slideOutHorizontally(tween(240, easing = FastOutSlowInEasing)) { it / 4 } +
+                                    fadeOut(tween(180))
+                            }
+                        ) { backStackEntry ->
                             val route = backStackEntry.toRoute<CategoryRoute>()
                             val category = remember(route.categoryName) {
                                 runCatching { FileCategory.valueOf(route.categoryName) }
@@ -574,11 +601,13 @@ fun OnyxFilesApp(
                             SettingsScreen(
                                 preferences = preferences,
                                 hasAllFilesAccess = dashboardState.hasAllFilesAccess,
+                                maxRefreshRateHz = maxRefreshRateHz,
                                 onSelectThemeMode = { viewModel.setThemeMode(it) },
                                 onSelectAccent = { viewModel.setAccentPreset(it) },
                                 onToggleHiddenFiles = { viewModel.setShowHiddenFiles(it) },
                                 onToggleFileExtensions = { viewModel.setShowFileExtensions(it) },
                                 onSelectViewMode = { viewModel.setViewMode(it) },
+                                onToggleHighRefreshRate = { viewModel.setHighRefreshRate(it) },
                                 onRequestAllFilesAccess = requestAllFilesAccess,
                                 onMountSafDrive = { safTreeLauncher.launch(null) },
                                 onRemoveSafDrive = { viewModel.removeSafTreeUri(it) },

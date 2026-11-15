@@ -1,9 +1,12 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -53,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -106,11 +110,19 @@ fun HomeDashboardScreen(
     val summaryMap = remember(dashboardState.categorySummaries) {
         dashboardState.categorySummaries.associateBy { it.category }
     }
+    val revealProgress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        revealProgress.animateTo(1f, animationSpec = tween(280, easing = FastOutSlowInEasing))
+    }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .background(onyx.background)
+            .graphicsLayer {
+                alpha = revealProgress.value
+                translationY = (1f - revealProgress.value) * 18f
+            }
             .testTag("home_dashboard_screen"),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
@@ -412,8 +424,8 @@ private fun CategoryCard(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.96f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        targetValue = if (pressed) 0.94f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "catScale"
     )
 

@@ -25,6 +25,8 @@ import com.example.data.model.SortOption
 import com.example.data.model.StorageVolumeInfo
 import com.example.util.FileFormatters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -184,20 +186,24 @@ class FileOperationsRepository(private val context: Context) {
                 val isDir = doc.isDirectory
                 val ext = if (isDir) "" else name.substringAfterLast('.', "")
                 val mime = doc.type ?: if (isDir) "resource/folder" else FileFormatters.getMimeType(ext)
+                val docSize = if (isDir) 0L else doc.length()
+                val docMod = doc.lastModified()
                 FileItem(
                     id = doc.uri.toString(),
                     name = name,
                     path = doc.uri.toString(),
                     uriString = doc.uri.toString(),
                     isDirectory = isDir,
-                    size = if (isDir) 0L else doc.length(),
-                    lastModified = doc.lastModified(),
+                    size = docSize,
+                    lastModified = docMod,
                     mimeType = mime,
                     extension = ext,
                     isHidden = hidden,
                     childCount = 0,
                     isSafDocument = true,
-                    typeGroup = FileFormatters.classifyFileType(isDir, ext, mime)
+                    typeGroup = FileFormatters.classifyFileType(isDir, ext, mime),
+                    formattedSize = if (isDir) "Folder" else FileFormatters.formatFileSize(docSize),
+                    formattedDate = FileFormatters.formatDateSmart(docMod)
                 )
             }
             emit(sortItems(mapped, sortOption, sortDirection))
@@ -241,23 +247,24 @@ class FileOperationsRepository(private val context: Context) {
         val isDir = file.isDirectory
         val ext = if (isDir) "" else file.extension
         val mime = if (isDir) "resource/folder" else FileFormatters.getMimeType(ext)
-        val childCount = if (isDir) {
-            runCatching { file.list()?.size ?: 0 }.getOrDefault(0)
-        } else 0
+        val fileSize = if (isDir) 0L else file.length()
+        val mod = file.lastModified()
         return FileItem(
             id = file.absolutePath,
             name = name,
             path = file.absolutePath,
             uriString = Uri.fromFile(file).toString(),
             isDirectory = isDir,
-            size = if (isDir) 0L else file.length(),
-            lastModified = file.lastModified(),
+            size = fileSize,
+            lastModified = mod,
             mimeType = mime,
             extension = ext,
             isHidden = hidden,
-            childCount = childCount,
+            childCount = 0,
             isSafDocument = false,
-            typeGroup = FileFormatters.classifyFileType(isDir, ext, mime)
+            typeGroup = FileFormatters.classifyFileType(isDir, ext, mime),
+            formattedSize = if (isDir) "Folder" else FileFormatters.formatFileSize(fileSize),
+            formattedDate = FileFormatters.formatDateSmart(mod)
         )
     }
 
@@ -283,14 +290,123 @@ class FileOperationsRepository(private val context: Context) {
     }
 
     suspend fun getCategorySummaries(): List<CategorySummary> = withContext(Dispatchers.IO) {
-        FileCategory.entries.map { category ->
-            val items = queryCategoryFiles(category, showHidden = false, limit = 500)
-            CategorySummary(
-                category = category,
-                count = items.size,
-                totalBytes = items.sumOf { it.size }
+        coroutineScope {
+            val imagesDef = async { countMediaStoreSummary(MediaStore.Images.Media.EXTERNAL_CONTENT_URI) }
+            val videosDef = async { countMediaStoreSummary(MediaStore.Video.Media.EXTERNAL_CONTENT_URI) }
+            val audioDef = async { countMediaStoreSummary(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI) }
+            val downloadsDef = async {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (downloadsDir != null && downloadsDir.exists()) {
+                    val files = downloadsDir.listFiles() ?: emptyArray()
+                    var cnt = 0
+                    var bytes = 0L
+                    for (f in files) {
+                        if (!f.name.startsWith(".")) {
+                            cnt++
+                            if (f.isFile) bytes += f.length()
+                        }
+                    }
+                    cnt to bytes
+                } else 0 to 0L
+            }
+            val filesDef = async { countFilesTableCategories() }
+
+            val (imgCount, imgBytes) = imagesDef.await()
+            val (vidCount, vidBytes) = videosDef.await()
+            val (audCount, audBytes) = audioDef.await()
+            val (dlCount, dlBytes) = downloadsDef.await()
+            val fileStats = filesDef.await()
+
+            listOf(
+                CategorySummary(FileCategory.RECENT, fileStats.recentCount, fileStats.recentBytes),
+                CategorySummary(FileCategory.IMAGES, imgCount, imgBytes),
+                CategorySummary(FileCategory.VIDEOS, vidCount, vidBytes),
+                CategorySummary(FileCategory.AUDIO, audCount, audBytes),
+                CategorySummary(FileCategory.DOCUMENTS, fileStats.docCount, fileStats.docBytes),
+                CategorySummary(FileCategory.DOWNLOADS, dlCount, dlBytes),
+                CategorySummary(FileCategory.APKS, fileStats.apkCount, fileStats.apkBytes),
+                CategorySummary(FileCategory.ARCHIVES, fileStats.archiveCount, fileStats.archiveBytes)
             )
         }
+    }
+
+    private data class FilesTableStats(
+        val recentCount: Int = 0,
+        val recentBytes: Long = 0L,
+        val docCount: Int = 0,
+        val docBytes: Long = 0L,
+        val apkCount: Int = 0,
+        val apkBytes: Long = 0L,
+        val archiveCount: Int = 0,
+        val archiveBytes: Long = 0L
+    )
+
+    private fun countMediaStoreSummary(uri: Uri): Pair<Int, Long> {
+        var count = 0
+        var total = 0L
+        runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(MediaStore.MediaColumns.SIZE),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                while (cursor.moveToNext()) {
+                    count++
+                    total += cursor.getLong(sizeCol)
+                }
+            }
+        }
+        return count to total
+    }
+
+    private fun countFilesTableCategories(): FilesTableStats {
+        var recentCnt = 0; var recentBytes = 0L
+        var docCnt = 0; var docBytes = 0L
+        var apkCnt = 0; var apkBytes = 0L
+        var arcCnt = 0; var arcBytes = 0L
+
+        val filesUri = MediaStore.Files.getContentUri("external")
+        val cutoffSec = (System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000) / 1000L
+        val docExts = FileFormatters.DOCUMENT_EXTENSIONS + FileFormatters.CODE_EXTENSIONS
+
+        runCatching {
+            context.contentResolver.query(
+                filesUri,
+                arrayOf(
+                    MediaStore.Files.FileColumns.DISPLAY_NAME,
+                    MediaStore.Files.FileColumns.SIZE,
+                    MediaStore.Files.FileColumns.DATE_MODIFIED
+                ),
+                "${MediaStore.Files.FileColumns.SIZE} > 0",
+                null,
+                null
+            )?.use { cursor ->
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
+                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
+                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
+
+                while (cursor.moveToNext()) {
+                    val name = cursor.getString(nameCol) ?: continue
+                    if (name.startsWith(".")) continue
+                    val size = cursor.getLong(sizeCol)
+                    val dateSec = cursor.getLong(dateCol)
+                    if (dateSec >= cutoffSec && recentCnt < 120) {
+                        recentCnt++
+                        recentBytes += size
+                    }
+                    val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+                    when {
+                        ext == "apk" -> { apkCnt++; apkBytes += size }
+                        ext in FileFormatters.ARCHIVE_EXTENSIONS -> { arcCnt++; arcBytes += size }
+                        ext in docExts -> { docCnt++; docBytes += size }
+                    }
+                }
+            }
+        }
+        return FilesTableStats(recentCnt, recentBytes, docCnt, docBytes, apkCnt, apkBytes, arcCnt, arcBytes)
     }
 
     suspend fun queryCategoryFiles(
@@ -378,6 +494,7 @@ class FileOperationsRepository(private val context: Context) {
                     val contentUri = ContentUris.withAppendedId(uri, id).toString()
                     val ext = name.substringAfterLast('.', "")
                     val mime = cursor.getString(mimeCol) ?: FileFormatters.getMimeType(ext)
+                    val lastModMs = dateSec * 1000L
                     result.add(
                         FileItem(
                             id = if (path.isNotEmpty()) path else contentUri,
@@ -386,11 +503,13 @@ class FileOperationsRepository(private val context: Context) {
                             uriString = if (path.isNotEmpty() && File(path).canRead()) Uri.fromFile(File(path)).toString() else contentUri,
                             isDirectory = false,
                             size = size,
-                            lastModified = dateSec * 1000L,
+                            lastModified = lastModMs,
                             mimeType = mime,
                             extension = ext,
                             isHidden = hidden,
-                            typeGroup = FileFormatters.classifyFileType(false, ext, mime)
+                            typeGroup = FileFormatters.classifyFileType(false, ext, mime),
+                            formattedSize = FileFormatters.formatFileSize(size),
+                            formattedDate = FileFormatters.formatDateSmart(lastModMs)
                         )
                     )
                 }
@@ -436,6 +555,8 @@ class FileOperationsRepository(private val context: Context) {
                     val ext = name.substringAfterLast('.', "")
                     val mime = cursor.getString(mimeCol) ?: FileFormatters.getMimeType(ext)
                     val contentUri = ContentUris.withAppendedId(filesUri, id).toString()
+                    val fSize = cursor.getLong(sizeCol)
+                    val lastModMs = cursor.getLong(dateCol) * 1000L
                     result.add(
                         FileItem(
                             id = if (path.isNotEmpty()) path else contentUri,
@@ -443,12 +564,14 @@ class FileOperationsRepository(private val context: Context) {
                             path = path.ifEmpty { contentUri },
                             uriString = if (path.isNotEmpty() && File(path).canRead()) Uri.fromFile(File(path)).toString() else contentUri,
                             isDirectory = false,
-                            size = cursor.getLong(sizeCol),
-                            lastModified = cursor.getLong(dateCol) * 1000L,
+                            size = fSize,
+                            lastModified = lastModMs,
                             mimeType = mime,
                             extension = ext,
                             isHidden = hidden,
-                            typeGroup = FileFormatters.classifyFileType(false, ext, mime)
+                            typeGroup = FileFormatters.classifyFileType(false, ext, mime),
+                            formattedSize = FileFormatters.formatFileSize(fSize),
+                            formattedDate = FileFormatters.formatDateSmart(lastModMs)
                         )
                     )
                 }
@@ -500,6 +623,8 @@ class FileOperationsRepository(private val context: Context) {
                     if (!seen.add(uniqueKey)) continue
                     val mime = cursor.getString(mimeCol) ?: FileFormatters.getMimeType(ext)
                     val contentUri = ContentUris.withAppendedId(filesUri, id).toString()
+                    val fSize = cursor.getLong(sizeCol)
+                    val lastModMs = cursor.getLong(dateCol) * 1000L
                     result.add(
                         FileItem(
                             id = uniqueKey,
@@ -507,36 +632,28 @@ class FileOperationsRepository(private val context: Context) {
                             path = path.ifEmpty { contentUri },
                             uriString = if (path.isNotEmpty() && File(path).canRead()) Uri.fromFile(File(path)).toString() else contentUri,
                             isDirectory = false,
-                            size = cursor.getLong(sizeCol),
-                            lastModified = cursor.getLong(dateCol) * 1000L,
+                            size = fSize,
+                            lastModified = lastModMs,
                             mimeType = mime,
                             extension = ext,
                             isHidden = hidden,
-                            typeGroup = FileFormatters.classifyFileType(false, ext, mime)
+                            typeGroup = FileFormatters.classifyFileType(false, ext, mime),
+                            formattedSize = FileFormatters.formatFileSize(fSize),
+                            formattedDate = FileFormatters.formatDateSmart(lastModMs)
                         )
                     )
                 }
             }
         }
 
-        // Also scan primary storage quickly if MediaStore hasn't indexed recent files (e.g., APKs/Archives)
-        val root = Environment.getExternalStorageDirectory()
-        if (root != null && root.canRead() && result.size < limit) {
-            val queue = ArrayDeque<Pair<File, Int>>()
-            queue.add(root to 0)
-            while (queue.isNotEmpty() && result.size < limit) {
-                val (dir, depth) = queue.removeFirst()
-                if (depth > 4) continue
-                dir.listFiles()?.forEach { child ->
-                    if (child.isDirectory) {
-                        if (!child.name.startsWith(".") && child.name != "Android") {
-                            queue.add(child to depth + 1)
-                        }
-                    } else {
-                        val ext = child.extension.lowercase(Locale.ROOT)
-                        if (ext in extensions && seen.add(child.absolutePath)) {
-                            mapFileToItem(child, showHidden)?.let { result.add(it) }
-                        }
+        // Quick scan in Downloads only for newly added unindexed files (e.g. APKs/Archives)
+        val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (downloads != null && downloads.canRead() && result.size < limit) {
+            downloads.listFiles()?.forEach { child ->
+                if (!child.isDirectory) {
+                    val ext = child.extension.lowercase(Locale.ROOT)
+                    if (ext in extensions && seen.add(child.absolutePath)) {
+                        mapFileToItem(child, showHidden)?.let { result.add(it) }
                     }
                 }
             }

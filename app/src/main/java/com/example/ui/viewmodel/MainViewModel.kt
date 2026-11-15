@@ -137,6 +137,18 @@ class MainViewModel(
         openDirectory(path = initialPath, isSaf = false, rootLabel = "Internal Storage", rootPath = initialPath)
     }
 
+    fun refreshOnResume() {
+        val prevHasAll = _dashboardState.value.hasAllFilesAccess
+        val nowHasAll = PermissionHelper.hasAllFilesAccess(appContext)
+        val nowHasAny = PermissionHelper.hasAnyStorageAccess(appContext)
+        if (prevHasAll != nowHasAll || _dashboardState.value.volumes.isEmpty()) {
+            refreshPermissionsAndDashboard()
+            reloadCurrentDirectory()
+        } else {
+            _dashboardState.update { it.copy(hasAllFilesAccess = nowHasAll, hasAnyStorageAccess = nowHasAny) }
+        }
+    }
+
     fun refreshPermissionsAndDashboard() {
         viewModelScope.launch {
             val hasAll = PermissionHelper.hasAllFilesAccess(appContext)
@@ -148,7 +160,7 @@ class MainViewModel(
                     volumes = volumes,
                     hasAllFilesAccess = hasAll,
                     hasAnyStorageAccess = hasAny,
-                    isLoading = true
+                    isLoading = it.categorySummaries.isEmpty()
                 )
             }
             val summaries = fileRepo.getCategorySummaries()
@@ -605,6 +617,10 @@ class MainViewModel(
 
     fun setShowFileExtensions(show: Boolean) {
         viewModelScope.launch { prefsRepo.setShowFileExtensions(show) }
+    }
+
+    fun setHighRefreshRate(enabled: Boolean) {
+        viewModelScope.launch { prefsRepo.setHighRefreshRate(enabled) }
     }
 
     fun clearRecentFiles() {

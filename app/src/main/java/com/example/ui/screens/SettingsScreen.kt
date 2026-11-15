@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Usb
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.Icon
@@ -56,11 +57,13 @@ import com.example.ui.theme.SuccessMint
 fun SettingsScreen(
     preferences: AppPreferences,
     hasAllFilesAccess: Boolean,
+    maxRefreshRateHz: Int,
     onSelectThemeMode: (ThemeMode) -> Unit,
     onSelectAccent: (AccentPreset) -> Unit,
     onToggleHiddenFiles: (Boolean) -> Unit,
     onToggleFileExtensions: (Boolean) -> Unit,
     onSelectViewMode: (ViewMode) -> Unit,
+    onToggleHighRefreshRate: (Boolean) -> Unit,
     onRequestAllFilesAccess: () -> Unit,
     onMountSafDrive: () -> Unit,
     onRemoveSafDrive: (String) -> Unit,
@@ -228,6 +231,14 @@ fun SettingsScreen(
                         onSelectViewMode(if (isGrid) ViewMode.GRID else ViewMode.LIST)
                     },
                     testTag = "toggle_grid_default"
+                )
+                SettingToggleRow(
+                    icon = Icons.Rounded.Speed,
+                    title = "120Hz Ultra-Smooth Mode",
+                    subtitle = "Request max display refresh rate (${maxRefreshRateHz} Hz detected)",
+                    checked = preferences.highRefreshRate,
+                    onCheckedChange = onToggleHighRefreshRate,
+                    testTag = "toggle_high_refresh_rate"
                 )
             }
         }
