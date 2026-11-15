@@ -11,6 +11,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,6 +81,8 @@ fun CategoryFilesScreen(
     onItemClick: (FileItem) -> Unit,
     onItemLongClick: (FileItem) -> Unit,
     onItemMoreClick: (FileItem) -> Unit,
+    onSelectAll: () -> Unit,
+    onInvertSelection: () -> Unit,
     onClearSelection: () -> Unit,
     onCopySelected: (List<FileItem>) -> Unit,
     onShareSelected: (List<FileItem>) -> Unit,
@@ -111,51 +116,128 @@ fun CategoryFilesScreen(
             .testTag("category_files_screen")
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = onyx.textPrimary)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = categoryState.category.label,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = onyx.textPrimary
-                    )
-                    Text(
-                        text = "${displayed.size} files",
-                        style = MonoMetadataStyle,
-                        color = onyx.textSecondary
-                    )
-                }
-                IconButton(onClick = {
-                    showSearchBar = !showSearchBar
-                    if (!showSearchBar) onSearchChange("")
-                }) {
-                    Icon(
-                        imageVector = if (showSearchBar) Icons.Rounded.Close else Icons.Rounded.Search,
-                        contentDescription = "Search category",
-                        tint = onyx.textPrimary
-                    )
-                }
-                IconButton(onClick = onToggleViewMode) {
-                    Icon(
-                        imageVector = if (preferences.viewMode == ViewMode.LIST) {
-                            Icons.Rounded.GridView
-                        } else {
-                            Icons.AutoMirrored.Rounded.ViewList
-                        },
-                        contentDescription = "Switch view mode",
-                        tint = onyx.textPrimary
-                    )
-                }
-                IconButton(onClick = onOpenSortSheet) {
-                    Icon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort", tint = onyx.textPrimary)
+            // Header: swaps cleanly to Selection Header with Mark All & Invert when marking files
+            AnimatedContent(
+                targetState = categoryState.selectedIds.isNotEmpty(),
+                transitionSpec = {
+                    (slideInVertically(tween(160)) { -it / 4 } + fadeIn(tween(150)))
+                        .togetherWith(fadeOut(tween(120)))
+                },
+                label = "categoryHeaderMode"
+            ) { inSelectionMode ->
+                if (inSelectionMode) {
+                    val totalCount = displayed.size
+                    val allMarked = totalCount > 0 && categoryState.selectedIds.size >= totalCount
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        IconButton(onClick = onClearSelection) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Clear selection", tint = onyx.textPrimary)
+                        }
+                        Text(
+                            text = "${categoryState.selectedIds.size}/$totalCount",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = onyx.accent,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(onyx.cardSurface)
+                                .border(0.85.dp, onyx.subtleBorder, RoundedCornerShape(12.dp))
+                                .clickable(onClick = onInvertSelection)
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .testTag("category_invert_selection_button"),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Invert",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = onyx.textPrimary,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (allMarked) onyx.accent else onyx.accentSoft)
+                                .border(0.9.dp, onyx.glowBorder, RoundedCornerShape(12.dp))
+                                .clickable {
+                                    if (allMarked) onClearSelection() else onSelectAll()
+                                }
+                                .padding(horizontal = 11.dp, vertical = 8.dp)
+                                .testTag("category_mark_all_button"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.SelectAll,
+                                contentDescription = if (allMarked) "Unmark All" else "Mark All",
+                                tint = if (allMarked) onyx.onAccent else onyx.accent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = if (allMarked) "Unmark" else "Mark All",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (allMarked) onyx.onAccent else onyx.accent,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = onyx.textPrimary)
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = categoryState.category.label,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = onyx.textPrimary
+                            )
+                            Text(
+                                text = "${displayed.size} files",
+                                style = MonoMetadataStyle,
+                                color = onyx.textSecondary
+                            )
+                        }
+                        IconButton(onClick = {
+                            showSearchBar = !showSearchBar
+                            if (!showSearchBar) onSearchChange("")
+                        }) {
+                            Icon(
+                                imageVector = if (showSearchBar) Icons.Rounded.Close else Icons.Rounded.Search,
+                                contentDescription = "Search category",
+                                tint = onyx.textPrimary
+                            )
+                        }
+                        IconButton(onClick = onToggleViewMode) {
+                            Icon(
+                                imageVector = if (preferences.viewMode == ViewMode.LIST) {
+                                    Icons.Rounded.GridView
+                                } else {
+                                    Icons.AutoMirrored.Rounded.ViewList
+                                },
+                                contentDescription = "Switch view mode",
+                                tint = onyx.textPrimary
+                            )
+                        }
+                        IconButton(onClick = onOpenSortSheet) {
+                            Icon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort", tint = onyx.textPrimary)
+                        }
+                    }
                 }
             }
 

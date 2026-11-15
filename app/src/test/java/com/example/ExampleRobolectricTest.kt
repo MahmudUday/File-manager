@@ -43,7 +43,10 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `large files category is present`() {
-        assertTrue(FileCategory.entries.contains(FileCategory.LARGE_FILES))
+    fun `libraries exclude recent and include large files`() {
+        val categories = FileCategory.entries
+        assertEquals(8, categories.size)
+        assertTrue(categories.contains(FileCategory.LARGE_FILES))
+        assertFalse(categories.any { it.name == "RECENT" })
     }
 }

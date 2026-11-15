@@ -281,7 +281,6 @@ fun OnyxFilesApp(
 
     val openAsMime: (FileItem, String) -> Unit = { item, mimeType ->
         runCatching {
-            viewModel.recordFileOpened(item)
             val intent = Intent.createChooser(viewModel.createOpenAsIntent(item, mimeType), "Open as...")
             context.startActivity(intent)
         }.onFailure {
@@ -291,7 +290,6 @@ fun OnyxFilesApp(
 
     val openExternal: (FileItem) -> Unit = { item ->
         runCatching {
-            viewModel.recordFileOpened(item)
             context.startActivity(viewModel.createOpenExternalIntent(item))
         }.onFailure {
             openAsTarget = item
@@ -307,7 +305,6 @@ fun OnyxFilesApp(
         } else if (item.extension.isBlank()) {
             openAsTarget = item
         } else {
-            viewModel.recordFileOpened(item)
             when {
                 item.typeGroup == FileTypeGroup.IMAGE -> {
                     val images = siblingList.filter { it.typeGroup == FileTypeGroup.IMAGE }
@@ -520,27 +517,6 @@ fun OnyxFilesApp(
                                     )
                                     navigateToTab(FilesRoute)
                                 },
-                                onRecentClick = { recent ->
-                                    val ext = recent.name.substringAfterLast('.', "")
-                                    val tempItem = FileItem(
-                                        id = recent.path,
-                                        name = recent.name,
-                                        path = recent.path,
-                                        uriString = recent.uriString,
-                                        isDirectory = false,
-                                        size = recent.size,
-                                        lastModified = recent.openedAt,
-                                        mimeType = recent.mimeType,
-                                        extension = ext,
-                                        isHidden = recent.name.startsWith("."),
-                                        typeGroup = FileFormatters.classifyFileType(
-                                            false,
-                                            ext,
-                                            recent.mimeType
-                                        )
-                                    )
-                                    handleFileOpen(tempItem, listOf(tempItem))
-                                },
                                 onGlobalSearchQueryChange = { viewModel.updateGlobalSearchQuery(it) },
                                 onClearGlobalSearch = { viewModel.clearGlobalSearch() },
                                 onSearchResultClick = { item, results ->
@@ -654,6 +630,8 @@ fun OnyxFilesApp(
                                 },
                                 onItemLongClick = { item -> viewModel.toggleCategorySelection(item.id) },
                                 onItemMoreClick = { item -> actionSheetItem = item },
+                                onSelectAll = { viewModel.selectAllCategory() },
+                                onInvertSelection = { viewModel.invertCategorySelection() },
                                 onClearSelection = { viewModel.clearCategorySelection() },
                                 onCopySelected = { items -> viewModel.setClipboard(ClipboardMode.COPY, items) },
                                 onShareSelected = shareItems,
@@ -674,29 +652,7 @@ fun OnyxFilesApp(
                                     )
                                     navigateToTab(FilesRoute)
                                 },
-                                onRemoveFavorite = { viewModel.removeFavorite(it) },
-                                onOpenRecent = { recent ->
-                                    val ext = recent.name.substringAfterLast('.', "")
-                                    val item = FileItem(
-                                        id = recent.path,
-                                        name = recent.name,
-                                        path = recent.path,
-                                        uriString = recent.uriString,
-                                        isDirectory = false,
-                                        size = recent.size,
-                                        lastModified = recent.openedAt,
-                                        mimeType = recent.mimeType,
-                                        extension = ext,
-                                        isHidden = recent.name.startsWith("."),
-                                        typeGroup = com.example.util.FileFormatters.classifyFileType(
-                                            false,
-                                            ext,
-                                            recent.mimeType
-                                        )
-                                    )
-                                    handleFileOpen(item, listOf(item))
-                                },
-                                onClearRecents = { viewModel.clearRecentFiles() }
+                                onRemoveFavorite = { viewModel.removeFavorite(it) }
                             )
                         }
 
@@ -713,8 +669,7 @@ fun OnyxFilesApp(
                                 onToggleHighRefreshRate = { viewModel.setHighRefreshRate(it) },
                                 onRequestAllFilesAccess = requestAllFilesAccess,
                                 onMountSafDrive = { safTreeLauncher.launch(null) },
-                                onRemoveSafDrive = { viewModel.removeSafTreeUri(it) },
-                                onClearRecentHistory = { viewModel.clearRecentFiles() }
+                                onRemoveSafDrive = { viewModel.removeSafTreeUri(it) }
                             )
                         }
                     }
@@ -828,7 +783,6 @@ fun OnyxFilesApp(
                 OpenAsBottomSheet(
                     item = target,
                     onOpenTextEditor = {
-                        viewModel.recordFileOpened(target)
                         activeTextItem = target
                     },
                     onSelectMimeType = { mime -> openAsMime(target, mime) },

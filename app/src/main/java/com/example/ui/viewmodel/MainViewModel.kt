@@ -400,6 +400,20 @@ class MainViewModel(
         }
     }
 
+    fun selectAllCategory() {
+        _categoryState.update { state ->
+            val allIds = state.filteredItems.map { it.id }.toSet()
+            state.copy(selectedIds = allIds)
+        }
+    }
+
+    fun invertCategorySelection() {
+        _categoryState.update { state ->
+            val allIds = state.filteredItems.map { it.id }.toSet()
+            state.copy(selectedIds = allIds - state.selectedIds)
+        }
+    }
+
     fun clearCategorySelection() {
         _categoryState.update { it.copy(selectedIds = emptySet()) }
     }
@@ -595,14 +609,7 @@ class MainViewModel(
         }
     }
 
-    fun recordFileOpened(item: FileItem) {
-        viewModelScope.launch {
-            prefsRepo.recordRecentFile(item)
-        }
-    }
-
     fun playAudioFromList(clickedItem: FileItem, contextItems: List<FileItem>) {
-        recordFileOpened(clickedItem)
         val audioQueue = contextItems.filter { it.typeGroup == FileTypeGroup.AUDIO }.ifEmpty { listOf(clickedItem) }
         val startIndex = audioQueue.indexOfFirst { it.id == clickedItem.id }.coerceAtLeast(0)
         audioController.playTracks(audioQueue, startIndex, expandSheet = false)
@@ -671,10 +678,6 @@ class MainViewModel(
 
     fun setHighRefreshRate(enabled: Boolean) {
         viewModelScope.launch { prefsRepo.setHighRefreshRate(enabled) }
-    }
-
-    fun clearRecentFiles() {
-        viewModelScope.launch { prefsRepo.clearRecentFiles() }
     }
 
     fun addSafTreeUri(uriString: String) {

@@ -49,9 +49,7 @@ import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderZip
-import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.SdStorage
 import androidx.compose.material.icons.rounded.Search
@@ -102,7 +100,6 @@ import com.example.data.model.CategorySummary
 import com.example.data.model.FavoriteFolder
 import com.example.data.model.FileCategory
 import com.example.data.model.FileItem
-import com.example.data.model.RecentFileEntry
 import com.example.data.model.StorageVolumeInfo
 import com.example.ui.components.FileListRow
 import com.example.ui.theme.LocalOnyxColors
@@ -136,7 +133,6 @@ fun HomeDashboardScreen(
     onVolumeClick: (StorageVolumeInfo) -> Unit,
     onCategoryClick: (FileCategory) -> Unit,
     onFavoriteClick: (FavoriteFolder) -> Unit,
-    onRecentClick: (RecentFileEntry) -> Unit,
     onGlobalSearchQueryChange: (String) -> Unit,
     onClearGlobalSearch: () -> Unit,
     onSearchResultClick: (FileItem, List<FileItem>) -> Unit,
@@ -503,10 +499,9 @@ fun HomeDashboardScreen(
 
             item(key = "categories_grid") {
                 val columns = if (isExpandedWidth) 4 else 2
-                val primaryCategories = remember {
-                    FileCategory.entries.filter { it != FileCategory.LARGE_FILES }
+                val rows = remember(columns) {
+                    FileCategory.entries.chunked(columns)
                 }
-                val rows = primaryCategories.chunked(columns)
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     rows.forEach { rowItems ->
                         Row(
@@ -527,79 +522,6 @@ fun HomeDashboardScreen(
                             }
                         }
                     }
-                }
-            }
-
-            // Large Files (>50 MB) Cleaner Tool Card
-            item(key = "large_files_cleaner") {
-                val largeSummary = summaryMap[FileCategory.LARGE_FILES]
-                val countText = largeSummary?.let { "${it.count} large files (>50 MB)" } ?: "Scan files >50 MB"
-                val sizeText = largeSummary?.takeIf { it.totalBytes > 0L }
-                    ?.let { FileFormatters.formatFileSize(it.totalBytes) } ?: ""
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(CatCardShape)
-                        .background(onyx.cardSurface)
-                        .drawBehind {
-                            drawCircle(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(WarningGold.copy(alpha = 0.22f), Color.Transparent),
-                                    center = Offset(32.dp.toPx(), size.height * 0.5f),
-                                    radius = size.width * 0.55f
-                                ),
-                                center = Offset(32.dp.toPx(), size.height * 0.5f),
-                                radius = size.width * 0.55f
-                            )
-                        }
-                        .border(0.9.dp, WarningGold.copy(alpha = 0.45f), CatCardShape)
-                        .clickable { onCategoryClick(FileCategory.LARGE_FILES) }
-                        .padding(14.dp)
-                        .testTag("category_card_LARGE_FILES"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CatIconShape)
-                            .background(WarningGold.copy(alpha = 0.18f))
-                            .border(0.75.dp, WarningGold.copy(alpha = 0.5f), CatIconShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.CleaningServices,
-                            contentDescription = "Large Files Finder",
-                            tint = WarningGold,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Large Files Finder",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = onyx.textPrimary
-                        )
-                        Text(
-                            text = countText,
-                            style = MonoMetadataStyle,
-                            color = onyx.textSecondary
-                        )
-                    }
-                    if (sizeText.isNotEmpty()) {
-                        Text(
-                            text = sizeText,
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = WarningGold
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                        contentDescription = "Open large files",
-                        tint = WarningGold
-                    )
                 }
             }
 
@@ -640,52 +562,6 @@ fun HomeDashboardScreen(
                                     color = onyx.textPrimary
                                 )
                             }
-                        }
-                    }
-                }
-            }
-
-            // Recently Opened Files
-            if (preferences.recentFiles.isNotEmpty()) {
-                item(key = "recent_opened_header") {
-                    Text(
-                        text = "RECENTLY OPENED",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = onyx.textTertiary
-                    )
-                }
-                items(preferences.recentFiles.take(5), key = { "${it.path}_${it.openedAt}" }) { recent ->
-                    Row(
-                        modifier = Modifier
-                            .animateItem()
-                            .fillMaxWidth()
-                            .clip(QuickCardShape)
-                            .background(onyx.cardSurface)
-                            .border(0.75.dp, onyx.subtleBorder, QuickCardShape)
-                            .clickable { onRecentClick(recent) }
-                            .padding(horizontal = 14.dp, vertical = 11.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Folder,
-                            contentDescription = null,
-                            tint = onyx.accent,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = recent.name,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = onyx.textPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "${FileFormatters.formatFileSize(recent.size)}  •  ${FileFormatters.formatDateSmart(recent.openedAt)}",
-                                style = MonoMetadataStyle,
-                                color = onyx.textSecondary
-                            )
                         }
                     }
                 }
@@ -993,7 +869,6 @@ private fun CategoryCard(
 
 private fun categoryVisuals(category: FileCategory, accentColor: Color): Pair<ImageVector, Color> {
     return when (category) {
-        FileCategory.RECENT -> Icons.Rounded.History to accentColor
         FileCategory.IMAGES -> Icons.Rounded.Image to TypeImageColor
         FileCategory.VIDEOS -> Icons.Rounded.VideoFile to TypeVideoColor
         FileCategory.AUDIO -> Icons.Rounded.AudioFile to TypeAudioColor

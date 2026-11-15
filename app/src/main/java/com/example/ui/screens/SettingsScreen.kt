@@ -103,7 +103,6 @@ fun SettingsScreen(
     onRequestAllFilesAccess: () -> Unit,
     onMountSafDrive: () -> Unit,
     onRemoveSafDrive: (String) -> Unit,
-    onClearRecentHistory: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val onyx = LocalOnyxColors.current
@@ -451,29 +450,6 @@ fun SettingsScreen(
                         IconButton(onClick = { onRemoveSafDrive(uri) }) {
                             Icon(Icons.Rounded.DeleteOutline, contentDescription = "Unmount", tint = onyx.textTertiary)
                         }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onClearRecentHistory)
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Rounded.DeleteOutline, contentDescription = null, tint = onyx.textSecondary)
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column {
-                        Text(
-                            text = "Clear Recent Files History",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = onyx.textPrimary
-                        )
-                        Text(
-                            text = "Reset recently opened files list",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = onyx.textSecondary
-                        )
                     }
                 }
             }

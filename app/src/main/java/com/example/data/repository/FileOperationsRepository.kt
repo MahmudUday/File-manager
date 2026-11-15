@@ -318,7 +318,6 @@ class FileOperationsRepository(private val context: Context) {
             val fileStats = filesDef.await()
 
             listOf(
-                CategorySummary(FileCategory.RECENT, fileStats.recentCount, fileStats.recentBytes),
                 CategorySummary(FileCategory.IMAGES, imgCount, imgBytes),
                 CategorySummary(FileCategory.VIDEOS, vidCount, vidBytes),
                 CategorySummary(FileCategory.AUDIO, audCount, audBytes),
@@ -332,8 +331,6 @@ class FileOperationsRepository(private val context: Context) {
     }
 
     private data class FilesTableStats(
-        val recentCount: Int = 0,
-        val recentBytes: Long = 0L,
         val docCount: Int = 0,
         val docBytes: Long = 0L,
         val apkCount: Int = 0,
@@ -366,7 +363,6 @@ class FileOperationsRepository(private val context: Context) {
     }
 
     private fun countFilesTableCategories(): FilesTableStats {
-        var recentCnt = 0; var recentBytes = 0L
         var docCnt = 0; var docBytes = 0L
         var apkCnt = 0; var apkBytes = 0L
         var arcCnt = 0; var arcBytes = 0L
@@ -374,7 +370,6 @@ class FileOperationsRepository(private val context: Context) {
         val largeThreshold = 50L * 1024L * 1024L
 
         val filesUri = MediaStore.Files.getContentUri("external")
-        val cutoffSec = (System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000) / 1000L
         val docExts = FileFormatters.DOCUMENT_EXTENSIONS + FileFormatters.CODE_EXTENSIONS
 
         runCatching {
@@ -382,8 +377,7 @@ class FileOperationsRepository(private val context: Context) {
                 filesUri,
                 arrayOf(
                     MediaStore.Files.FileColumns.DISPLAY_NAME,
-                    MediaStore.Files.FileColumns.SIZE,
-                    MediaStore.Files.FileColumns.DATE_MODIFIED
+                    MediaStore.Files.FileColumns.SIZE
                 ),
                 "${MediaStore.Files.FileColumns.SIZE} > 0",
                 null,
@@ -391,17 +385,11 @@ class FileOperationsRepository(private val context: Context) {
             )?.use { cursor ->
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
                 val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
-                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
 
                 while (cursor.moveToNext()) {
                     val name = cursor.getString(nameCol) ?: continue
                     if (name.startsWith(".")) continue
                     val size = cursor.getLong(sizeCol)
-                    val dateSec = cursor.getLong(dateCol)
-                    if (dateSec >= cutoffSec && recentCnt < 120) {
-                        recentCnt++
-                        recentBytes += size
-                    }
                     if (size >= largeThreshold) {
                         largeCnt++
                         largeBytes += size
@@ -415,7 +403,7 @@ class FileOperationsRepository(private val context: Context) {
                 }
             }
         }
-        return FilesTableStats(recentCnt, recentBytes, docCnt, docBytes, apkCnt, apkBytes, arcCnt, arcBytes, largeCnt, largeBytes)
+        return FilesTableStats(docCnt, docBytes, apkCnt, apkBytes, arcCnt, arcBytes, largeCnt, largeBytes)
     }
 
     suspend fun queryCategoryFiles(
@@ -464,7 +452,6 @@ class FileOperationsRepository(private val context: Context) {
                 limit = limit
             )
             FileCategory.LARGE_FILES -> queryLargeFiles(showHidden = showHidden, limit = limit)
-            FileCategory.RECENT -> queryRecentMediaStoreFiles(showHidden = showHidden, limit = 120)
         }
     }
 
@@ -584,68 +571,6 @@ class FileOperationsRepository(private val context: Context) {
                             isHidden = hidden,
                             typeGroup = FileFormatters.classifyFileType(false, ext, mime),
                             formattedSize = FileFormatters.formatFileSize(size),
-                            formattedDate = FileFormatters.formatDateSmart(lastModMs)
-                        )
-                    )
-                }
-            }
-        }
-        return result
-    }
-
-    private fun queryRecentMediaStoreFiles(showHidden: Boolean, limit: Int): List<FileItem> {
-        val filesUri = MediaStore.Files.getContentUri("external")
-        val result = mutableListOf<FileItem>()
-        val projection = arrayOf(
-            MediaStore.Files.FileColumns._ID,
-            MediaStore.Files.FileColumns.DISPLAY_NAME,
-            MediaStore.Files.FileColumns.DATA,
-            MediaStore.Files.FileColumns.SIZE,
-            MediaStore.Files.FileColumns.DATE_MODIFIED,
-            MediaStore.Files.FileColumns.MIME_TYPE
-        )
-        val cutoffSec = (System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000) / 1000L
-        runCatching {
-            context.contentResolver.query(
-                filesUri,
-                projection,
-                "${MediaStore.Files.FileColumns.DATE_MODIFIED} >= ? AND ${MediaStore.Files.FileColumns.SIZE} > 0",
-                arrayOf(cutoffSec.toString()),
-                "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC"
-            )?.use { cursor ->
-                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
-                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
-                val dataCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATA)
-                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
-                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
-                val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
-
-                while (cursor.moveToNext() && result.size < limit) {
-                    val id = cursor.getLong(idCol)
-                    val path = if (dataCol >= 0) cursor.getString(dataCol) ?: "" else ""
-                    val name = cursor.getString(nameCol) ?: path.substringAfterLast('/')
-                    if (name.isEmpty()) continue
-                    val hidden = name.startsWith(".")
-                    if (!showHidden && hidden) continue
-                    val ext = name.substringAfterLast('.', "")
-                    val mime = cursor.getString(mimeCol) ?: FileFormatters.getMimeType(ext)
-                    val contentUri = ContentUris.withAppendedId(filesUri, id).toString()
-                    val fSize = cursor.getLong(sizeCol)
-                    val lastModMs = cursor.getLong(dateCol) * 1000L
-                    result.add(
-                        FileItem(
-                            id = if (path.isNotEmpty()) path else contentUri,
-                            name = name,
-                            path = path.ifEmpty { contentUri },
-                            uriString = if (path.isNotEmpty() && File(path).canRead()) Uri.fromFile(File(path)).toString() else contentUri,
-                            isDirectory = false,
-                            size = fSize,
-                            lastModified = lastModMs,
-                            mimeType = mime,
-                            extension = ext,
-                            isHidden = hidden,
-                            typeGroup = FileFormatters.classifyFileType(false, ext, mime),
-                            formattedSize = FileFormatters.formatFileSize(fSize),
                             formattedDate = FileFormatters.formatDateSmart(lastModMs)
                         )
                     )

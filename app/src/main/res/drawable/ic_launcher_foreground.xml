@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/orion_launcher_fg"
+        android:drawable="@drawable/orion_simple_icon_1794733125744"
         android:gravity="center" />
 </layer-list>

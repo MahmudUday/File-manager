@@ -197,30 +197,73 @@ fun FileBrowserScreen(
             ) { mode ->
                 when (mode) {
                     2 -> {
-                        // Selection Header
+                        // Selection Header with explicit Mark All & Invert controls
+                        val totalCount = browserState.displayedItems.size
+                        val allMarked = totalCount > 0 && browserState.selectedIds.size >= totalCount
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(horizontal = 10.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            IconButton(onClick = onClearSelection) {
+                            IconButton(
+                                onClick = onClearSelection,
+                                modifier = Modifier.testTag("clear_selection_button")
+                            ) {
                                 Icon(Icons.Rounded.Close, contentDescription = "Clear selection", tint = onyx.textPrimary)
                             }
                             Text(
-                                text = "${browserState.selectedIds.size} selected",
-                                style = MaterialTheme.typography.titleLarge,
+                                text = "${browserState.selectedIds.size}/$totalCount",
+                                style = MaterialTheme.typography.titleMedium,
                                 color = onyx.accent,
+                                maxLines = 1,
                                 modifier = Modifier.weight(1f)
                             )
-                            androidx.compose.material3.TextButton(
-                                onClick = onInvertSelection,
-                                modifier = Modifier.testTag("invert_selection_button")
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(onyx.cardSurface)
+                                    .border(0.85.dp, onyx.subtleBorder, RoundedCornerShape(12.dp))
+                                    .clickable(onClick = onInvertSelection)
+                                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                                    .testTag("invert_selection_button"),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Invert", color = onyx.accent)
+                                Text(
+                                    text = "Invert",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = onyx.textPrimary,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
-                            IconButton(onClick = onSelectAll) {
-                                Icon(Icons.Rounded.SelectAll, contentDescription = "Select all", tint = onyx.textPrimary)
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (allMarked) onyx.accent else onyx.accentSoft)
+                                    .border(0.9.dp, onyx.glowBorder, RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        if (allMarked) onClearSelection() else onSelectAll()
+                                    }
+                                    .padding(horizontal = 11.dp, vertical = 8.dp)
+                                    .testTag("mark_all_button"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SelectAll,
+                                    contentDescription = if (allMarked) "Unmark All" else "Mark All",
+                                    tint = if (allMarked) onyx.onAccent else onyx.accent,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = if (allMarked) "Unmark" else "Mark All",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (allMarked) onyx.onAccent else onyx.accent,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
                     }

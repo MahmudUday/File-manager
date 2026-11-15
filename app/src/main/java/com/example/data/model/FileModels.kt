@@ -11,7 +11,6 @@ import com.example.ui.theme.AccentViolet
 import kotlinx.serialization.Serializable
 
 enum class FileCategory(val label: String) {
-    RECENT("Recent"),
     IMAGES("Images"),
     VIDEOS("Videos"),
     AUDIO("Audio"),
@@ -126,16 +125,6 @@ data class FavoriteFolder(
     val addedAt: Long = System.currentTimeMillis()
 )
 
-@Serializable
-data class RecentFileEntry(
-    val name: String,
-    val path: String,
-    val uriString: String,
-    val mimeType: String,
-    val size: Long,
-    val openedAt: Long = System.currentTimeMillis()
-)
-
 @Immutable
 data class AppPreferences(
     val themeMode: ThemeMode = ThemeMode.PURE_AMOLED,
@@ -147,7 +136,6 @@ data class AppPreferences(
     val showFileExtensions: Boolean = true,
     val highRefreshRate: Boolean = true,
     val favorites: List<FavoriteFolder> = emptyList(),
-    val recentFiles: List<RecentFileEntry> = emptyList(),
     val safTreeUris: List<String> = emptyList()
 )
 

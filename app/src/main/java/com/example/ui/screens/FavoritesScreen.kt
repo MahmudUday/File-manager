@@ -24,15 +24,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BookmarkRemove
-import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Folder
-import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -52,10 +49,8 @@ import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.AppPreferences
 import com.example.data.model.FavoriteFolder
-import com.example.data.model.RecentFileEntry
 import com.example.ui.theme.LocalOnyxColors
 import com.example.ui.theme.MonoMetadataStyle
-import com.example.util.FileFormatters
 
 private val FavCardShape = RoundedCornerShape(16.dp)
 
@@ -64,8 +59,6 @@ fun FavoritesScreen(
     preferences: AppPreferences,
     onOpenFavorite: (FavoriteFolder) -> Unit,
     onRemoveFavorite: (FavoriteFolder) -> Unit,
-    onOpenRecent: (RecentFileEntry) -> Unit,
-    onClearRecents: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val onyx = LocalOnyxColors.current
@@ -106,7 +99,7 @@ fun FavoritesScreen(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Favorites & History",
+                    text = "Favorites",
                     style = MaterialTheme.typography.headlineMedium,
                     color = onyx.textPrimary
                 )
@@ -213,95 +206,6 @@ fun FavoritesScreen(
                             imageVector = Icons.Rounded.BookmarkRemove,
                             contentDescription = "Remove bookmark",
                             tint = onyx.textSecondary
-                        )
-                    }
-                }
-            }
-        }
-
-        item(key = "recents_title") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "RECENTLY OPENED (${preferences.recentFiles.size})",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = onyx.textTertiary
-                )
-                if (preferences.recentFiles.isNotEmpty()) {
-                    TextButton(onClick = onClearRecents) {
-                        Icon(
-                            imageVector = Icons.Rounded.DeleteSweep,
-                            contentDescription = null,
-                            tint = onyx.accent,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Clear", color = onyx.accent)
-                    }
-                }
-            }
-        }
-
-        if (preferences.recentFiles.isEmpty()) {
-            item(key = "empty_recents") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(FavCardShape)
-                        .background(onyx.cardSurface)
-                        .border(0.8.dp, onyx.subtleBorder, FavCardShape)
-                        .padding(18.dp)
-                ) {
-                    Text(
-                        text = "Files you open in Orion Explorer will appear here.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = onyx.textSecondary
-                    )
-                }
-            }
-        } else {
-            items(preferences.recentFiles, key = { "${it.path}_${it.openedAt}" }) { recent ->
-                Row(
-                    modifier = Modifier
-                        .animateItem()
-                        .fillMaxWidth()
-                        .clip(FavCardShape)
-                        .background(onyx.cardSurface)
-                        .border(0.8.dp, onyx.subtleBorder, FavCardShape)
-                        .clickable { onOpenRecent(recent) }
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(11.dp))
-                            .background(onyx.elevatedSurface),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.InsertDriveFile,
-                            contentDescription = null,
-                            tint = onyx.accent.copy(alpha = 0.85f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = recent.name,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = onyx.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${FileFormatters.formatFileSize(recent.size)}  •  ${FileFormatters.formatDateSmart(recent.openedAt)}",
-                            style = MonoMetadataStyle,
-                            color = onyx.textSecondary
                         )
                     }
                 }
